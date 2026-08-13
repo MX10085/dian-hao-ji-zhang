@@ -4,6 +4,7 @@
   const $ = Util.$, $$ = Util.$$;
   const STORE_KEY = 'energy-tracker.v1';
   const BACKUP_KEY = 'energy-tracker.backups.v1';
+  const APP_VERSION = 'v1.0';
 
   const DEFAULT_SETTINGS = {
     vehicleName: '极核 AE6+',
@@ -604,6 +605,8 @@
     f.unit.value = s.unit;
     const dl = $('#auto-download');
     if (dl) dl.checked = !!state.autoDownload;
+    const ver = $('#app-version');
+    if (ver) ver.textContent = APP_VERSION;
     renderVehiclePanel();
   }
 

@@ -262,6 +262,9 @@ main { max-width: 720px; margin: 0 auto; padding: 14px 14px 92px; }
   margin: 10px 0;
 }
 .auto-dl-check input { width: auto; margin: 0; }
+.about-panel p { margin: 6px 0; font-size: 13px; }
+.about-panel a { color: var(--accent); text-decoration: none; }
+.about-version { color: var(--accent); font-weight: 700; }
 
 #tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
