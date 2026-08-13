@@ -140,6 +140,13 @@
       }
       area += ' L' + lastP.x.toFixed(1) + ' ' + base.toFixed(1) + ' L' + pts[0].x.toFixed(1) + ' ' + base.toFixed(1) + ' Z';
     }
+    /* 平均虚线：均值在当前可见范围内才显示 */
+    let avgLine = '';
+    if (mean != null && isFinite(mean) && mean >= min && mean <= max) {
+      const avgY = y(mean);
+      avgLine = '<line x1="' + padL + '" y1="' + avgY.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + avgY.toFixed(1) + '" class="avg-line"/>' +
+        '<text x="' + (W - padR - 6) + '" y="' + (avgY - 6).toFixed(1) + '" text-anchor="end" class="axis avg-label">平均 ' + esc(fmt(mean)) + '</text>';
+    }
     const guide = '<line class="tt-line" x1="0" y1="0" x2="0" y2="0" style="display:none"/>' +
       '<circle class="tt-dot" r="4.5" fill="#ffd75e" stroke="#10141f" stroke-width="2" style="display:none"/>';
 
@@ -150,6 +157,7 @@
       '<stop offset="100%" stop-color="#9ad4ea" stop-opacity="0"/>' +
       '</linearGradient></defs>' +
       gridAndAxis(W, H, padL, padR, padT, padB, min, max, fmt) +
+      avgLine +
       (area ? '<path d="' + area + '" fill="url(#' + gradId + ')" class="area"/>' : '') +
       segPaths + dots + labels + guide + '</svg>';
 

@@ -108,6 +108,8 @@ main { max-width: 720px; margin: 0 auto; padding: 14px 14px 92px; }
 .chart .seg-line { stroke-width: 2.2; }
 .chart .area { pointer-events: none; }
 .chart .grid { stroke: var(--line); stroke-width: 1; stroke-opacity: 0.5; }
+.chart .avg-line { stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 6 4; opacity: 0.85; }
+.chart .avg-label { fill: var(--muted); font-size: 11px; }
 .chart .axis { fill: var(--muted); font-size: 11px; }
 .chart .bar { fill: var(--accent); }
 .chart .bar { transition: stroke 0.15s, stroke-width 0.15s; }

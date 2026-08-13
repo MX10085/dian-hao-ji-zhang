@@ -92,7 +92,7 @@
   }
 
   function unitLabel() {
-    return currentVehicle().settings.unit === 'kWh/100km' ? 'kWh/100km' : 'Wh/km';
+    return currentVehicle().settings.unit === 'kWh/100km' ? '度/百公里' : 'Wh/km';
   }
 
   function dispEfficiency(whPerKm) {
