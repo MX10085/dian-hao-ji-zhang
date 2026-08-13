@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<title>电耗记账 · 极核 AE6+</title>
+<meta name="theme-color" content="#10141f" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="10.6" y="3.8" width="2.8" height="2.6" rx="1" fill="currentColor"/>
+        <rect x="6.8" y="6.5" width="10.4" height="14" rx="2.8" fill="currentColor" opacity="0.18" stroke="currentColor" stroke-width="2"/>
+        <path d="M13.5 10 L10.2 14.2 h1.9 l-0.9 3.8 3.4 -4.4 h-2 z" fill="currentColor"/>
+      </svg>
+    </span>
+    <div class="brand-text">
+      <h1 id="vehicle-title">电耗记账</h1>
+      <p id="vehicle-sub">本地离线 · 数据只存本机</p>
+    </div>
+  </div>
+  <div class="top-actions">
+    <button id="btn-add-quick" class="btn primary" type="button">＋ 记一笔</button>
+  </div>
+</header>
+
+<main>
+  <section id="tab-records" class="tab active">
+    <div class="panel">
+      <div id="stats" class="stats"></div>
+    </div>
+    <div class="panel">
+      <h2>每次充电路段电耗</h2>
+      <p class="warn-hint">
+        <span class="dot gd-blue"></span>低于平时（优秀）
+        <span class="dot gd-green"></span>接近平均（良好）
+        <span class="dot gd-red"></span>高于平时（耗电）
+      </p>
+      <div id="chart-wh" class="chart"></div>
+    </div>
+    <div class="panel">
+      <h2>电池健康估算</h2>
+      <p class="warn-hint">
+        <span class="dot gd-red"></span>低于平时
+        <span class="dot gd-green"></span>接近平均
+        <span class="dot gd-blue"></span>高于平时（优秀）
+      </p>
+      <div id="battery-health" class="stats health-stats"></div>
+      <div id="chart-health" class="chart"></div>
+      <p class="muted">按每次充电的「充电量 ÷ 电量差」反推当前可用容量，受充电器损耗和电量取整影响，结果仅供参考。</p>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <h2>充电记录</h2>
+        <button id="btn-toggle-records" class="btn ghost hidden" type="button">展开全部</button>
+      </div>
+      <div id="record-list" class="record-list"></div>
+      <p id="record-empty" class="empty-hint">还没有充电记录。点「记一笔」开始，或到设置页加载示例数据看看效果。</p>
+    </div>
+  </section>
+
+  <section id="tab-expenses" class="tab">
+    <div class="toolbar">
+      <button id="btn-add-expense" class="btn primary" type="button">＋ 记费用</button>
+      <span id="expense-count" class="muted"></span>
+    </div>
+    <div id="expense-list" class="record-list"></div>
+    <p id="expense-empty" class="empty-hint">还没有费用记录。点「记费用」记一笔保养、保险等支出。</p>
+    <div class="panel">
+      <h2>各项费用统计</h2>
+      <div id="expense-cat-table" class="cat-table"></div>
+    </div>
+    <div class="panel">
+      <h2>月度支出统计</h2>
+      <div id="chart-monthly" class="chart"></div>
+    </div>
+    <div class="panel">
+      <h2>费用构成</h2>
+      <div id="expense-quick" class="quick-expense">
+        <span class="muted">快捷记一笔：</span>
+        <button class="btn" type="button" data-type="保养">保养</button>
+        <button class="btn" type="button" data-type="维修">维修</button>
+        <button class="btn" type="button" data-type="保险">保险</button>
+        <button class="btn" type="button" data-type="停车">停车</button>
+        <button class="btn" type="button" data-type="洗车">洗车</button>
+        <button class="btn" type="button" data-type="其他">其他</button>
+      </div>
+      <div id="chart-breakdown" class="chart"></div>
+    </div>
+  </section>
+
+  <section id="tab-settings" class="tab">
+    <div class="panel">
+      <h2>车辆管理</h2>
+      <label class="muted" for="vehicle-select">当前车辆</label>
+      <select id="vehicle-select" class="vehicle-select"></select>
+      <div class="data-actions">
+        <button id="btn-vehicle-add" class="btn" type="button">＋ 添加车辆</button>
+        <button id="btn-vehicle-rename" class="btn" type="button">重命名</button>
+        <button id="btn-vehicle-del" class="btn" type="button">删除</button>
+      </div>
+      <p class="muted" style="margin-top:8px">切换车辆后，记录、统计、设置都按当前车辆独立保存。</p>
+    </div>
+
+    <form id="settings-form" class="panel form-panel">
+      <h2>车辆设置</h2>
+      <label>车辆名称
+        <input name="vehicleName" type="text" />
+      </label>
+      <label>爱车相伴日期
+        <input name="companionDate" type="date" />
+        <small>记录提车/相伴开始的日子，记录页会显示相伴天数</small>
+      </label>
+      <label>电池容量（Wh）
+        <input name="batteryCapacityWh" type="number" step="any" min="1" />
+        <small>AE6+ 电池 69V×27Ah ≈ 1863 Wh</small>
+      </label>
+      <label>充电效率（墙电 → 电池）
+        <input name="chargerEfficiency" type="number" step="0.01" min="0.5" max="1" />
+        <small>包含充电器损耗，默认 0.88</small>
+      </label>
+      <label>默认电价（元/度）
+        <input name="defaultPrice" type="number" step="any" min="0" />
+      </label>
+      <label>电耗单位
+        <select name="unit">
+          <option value="kWh/100km">kWh/100km（度/百公里）</option>
+          <option value="Wh/km">Wh/km</option>
+        </select>
+      </label>
+      <button class="btn primary" type="submit">保存设置</button>
+    </form>
+
+    <div class="panel">
+      <h2>数据导入导出</h2>
+      <div class="data-actions">
+        <button id="btn-import" class="btn" type="button">导入数据</button>
+        <button id="btn-export" class="btn" type="button">导出备份</button>
+      </div>
+      <div class="data-actions">
+        <button id="btn-export-csv" class="btn" type="button">导出 CSV</button>
+        <button id="btn-sample" class="btn" type="button">加载示例数据</button>
+      </div>
+      <input type="file" id="file-input" accept=".csv,.json,text/csv,application/json" multiple hidden />
+      <p class="muted">「导出备份」生成 JSON（含设置与全部记录）；导入支持小熊油耗 CSV、通用 CSV、本应用 JSON 备份。</p>
+    </div>
+
+    <div class="panel">
+      <h2>每日自动备份</h2>
+      <p class="muted">每天自动在本地保存一份数据快照（保留最近 15 份），打开应用时自动执行，页面开着时每小时检查一次。电脑端建议定期手动「导出备份」存到别处更保险。</p>
+      <div class="data-actions">
+        <button id="btn-backup-now" class="btn" type="button">立即备份</button>
+      </div>
+      <div id="backup-list" class="backup-list" style="margin-top:10px"></div>
+    </div>
+
+  </section>
+</main>
+
+<nav id="tabbar">
+  <button data-tab="records" class="active" type="button">记录</button>
+  <button data-tab="expenses" type="button">费用</button>
+  <button data-tab="settings" type="button">设置</button>
+</nav>
+
+<dialog id="record-dialog">
+  <form id="record-form" class="dialog-body">
+    <h2 id="dialog-title">记一笔</h2>
+    <input id="f-id" type="hidden" />
+    <div class="grid2">
+      <label>日期<input id="f-date" type="date" required /></label>
+      <label>时间<input id="f-time" type="time" /></label>
+    </div>
+    <label>总里程（km）<input id="f-mileage" type="number" step="any" min="0" required /></label>
+    <div class="grid2">
+      <label>充电前电量 %<input id="f-socStart" type="number" min="0" max="100" step="1" /></label>
+      <label>充电后电量 %<input id="f-socEnd" type="number" min="0" max="100" step="1" /></label>
+    </div>
+    <label>充电量（墙端 kWh）
+      <input id="f-energy" type="number" step="any" min="0" />
+      <small>有计量插座填这个最准；留空且填了电量 % 会自动估算</small>
+    </label>
+    <div class="grid2">
+      <label>电价（元/度）<input id="f-price" type="number" step="any" min="0" /></label>
+      <label>费用（元）<input id="f-cost" type="number" step="any" min="0" /></label>
+    </div>
+    <div class="grid2">
+      <label class="check"><input id="f-full" type="checkbox" checked /> 充满</label>
+      <label>充电方式
+        <select id="f-type">
+          <option>家充</option>
+          <option>小区充电桩</option>
+          <option>快充</option>
+          <option>其他</option>
+        </select>
+      </label>
+    </div>
+    <label>备注
+      <input id="f-note" type="text" maxlength="64" placeholder="可写充电地点、温度等" />
+    </label>
+    <div class="dialog-actions">
+      <button id="btn-del" class="btn danger hidden" type="button">删除</button>
+      <span class="spacer"></span>
+      <button class="btn" type="button" data-close>取消</button>
+      <button class="btn primary" type="submit">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="expense-dialog">
+  <form id="expense-form" class="dialog-body">
+    <h2 id="expense-dialog-title">记费用</h2>
+    <input id="e-id" type="hidden" />
+    <div class="grid2">
+      <label>日期<input id="e-date" type="date" required /></label>
+      <label>时间<input id="e-time" type="time" /></label>
+    </div>
+    <label>费用类型
+      <input id="e-type" type="text" list="expense-types" required />
+      <datalist id="expense-types">
+        <option>保养</option>
+        <option>保险</option>
+        <option>停车</option>
+        <option>维修</option>
+        <option>配件</option>
+        <option>洗车</option>
+        <option>其他</option>
+      </datalist>
+    </label>
+    <label>金额（元）<input id="e-cost" type="number" step="any" min="0" required /></label>
+    <label>备注
+      <input id="e-note" type="text" maxlength="64" placeholder="可写说明" />
+    </label>
+    <div class="dialog-actions">
+      <button id="btn-del-expense" class="btn danger hidden" type="button">删除</button>
+      <span class="spacer"></span>
+      <button class="btn" type="button" data-close>取消</button>
+      <button class="btn primary" type="submit">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="import-dialog">
+  <div class="dialog-body">
+    <h2>导入数据</h2>
+    <div id="dropzone" class="dropzone">
+      <p>拖拽 CSV / JSON 文件到这里</p>
+      <p class="muted">或 <button id="btn-pick" class="btn" type="button">选择文件</button></p>
+    </div>
+    <div id="import-result" class="import-result"></div>
+    <div class="dialog-actions">
+      <span class="spacer"></span>
+      <button class="btn" type="button" data-close>关闭</button>
+      <button id="btn-import-confirm" class="btn primary hidden" type="button">确认导入</button>
+    </div>
+  </div>
+</dialog>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="js/util.js"></script>
+<script src="js/importer.js"></script>
+<script src="js/calc.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

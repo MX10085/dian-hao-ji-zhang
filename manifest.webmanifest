@@ -1,0 +1,14 @@
+{
+  "name": "电耗记账 · 极核 AE6+",
+  "short_name": "电耗记账",
+  "description": "自用的两轮电动车能耗记录应用",
+  "lang": "zh-CN",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#10141f",
+  "theme_color": "#10141f",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

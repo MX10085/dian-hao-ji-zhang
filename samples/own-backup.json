@@ -1,0 +1,56 @@
+{
+  "app": "energy-tracker",
+  "version": 1,
+  "savedAt": "2026-08-12T00:00:00.000Z",
+  "settings": {
+    "vehicleName": "极核 AE6+",
+    "batteryCapacityWh": 1863,
+    "chargerEfficiency": 0.88,
+    "defaultPrice": 0.6,
+    "unit": "Wh/km"
+  },
+  "records": [
+    {
+      "id": "sample-1",
+      "date": "2026-07-20",
+      "time": "20:13",
+      "mileage": 1240,
+      "socStart": 5,
+      "socEnd": 100,
+      "energyKwh": 1.82,
+      "cost": 1.09,
+      "price": 0.6,
+      "full": true,
+      "type": "家充",
+      "note": "首次完整记录"
+    },
+    {
+      "id": "sample-2",
+      "date": "2026-07-23",
+      "time": "21:02",
+      "mileage": 1295,
+      "socStart": 12,
+      "socEnd": 100,
+      "energyKwh": 1.71,
+      "cost": 1.03,
+      "price": 0.6,
+      "full": true,
+      "type": "家充",
+      "note": ""
+    },
+    {
+      "id": "sample-3",
+      "date": "2026-08-05",
+      "time": "22:30",
+      "mileage": 1460,
+      "socStart": 45,
+      "socEnd": 80,
+      "energyKwh": 0.74,
+      "cost": 0.67,
+      "price": 0.9,
+      "full": false,
+      "type": "小区充电桩",
+      "note": "补电至80%"
+    }
+  ]
+}
