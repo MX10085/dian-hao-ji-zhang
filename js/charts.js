@@ -218,6 +218,12 @@
     const labelStep = Math.max(1, Math.ceil(items.length / 8));
     const showValues = items.length <= 12;
     let out = gridAndAxis(W, H, padL, padR, padT, padB, 0, max, fmt);
+    /* 平均虚线：均值在当前可见范围内才显示 */
+    if (opts.mean != null && isFinite(opts.mean) && opts.mean >= 0 && opts.mean <= max) {
+      const avgY = padT + innerH * (1 - opts.mean / max);
+      out += '<line x1="' + padL + '" y1="' + avgY.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + avgY.toFixed(1) + '" class="avg-line"/>' +
+        '<text x="' + (W - padR - 6) + '" y="' + (avgY - 6).toFixed(1) + '" text-anchor="end" class="axis avg-label">平均 ' + esc(fmt(opts.mean)) + '</text>';
+    }
     const centers = [];
 
     items.forEach(function (it, i) {

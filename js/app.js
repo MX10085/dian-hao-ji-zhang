@@ -309,8 +309,12 @@
     const monthItems = es.monthTotals.map(function (m) {
       return { label: String(parseInt(m.month.slice(5), 10)) + '月', value: m.total };
     });
+    const monthMean = monthItems.length ? monthItems.reduce(function (acc, m) { return acc + m.value; }, 0) / monthItems.length : null;
     attachZoomSafe('#chart-monthly', monthItems, function (slice, body) {
-      TrackerCharts.barChart(body, slice, { fmt: function (val) { return Util.fmt(val, 2); } });
+      TrackerCharts.barChart(body, slice, {
+        fmt: function (val) { return Util.fmt(val, 2); },
+        mean: monthMean
+      });
     }, 2, 183);
 
     TrackerCharts.donutChart($('#chart-breakdown'), es.breakdown, { fmt: function (val) { return Util.fmt(val, 2); } });
