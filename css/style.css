@@ -253,6 +253,15 @@ main { max-width: 720px; margin: 0 auto; padding: 14px 14px 92px; }
   margin-bottom: 10px;
 }
 .backup-list .rec-date { font-size: 14px; }
+.auto-dl-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+  margin: 10px 0;
+}
+.auto-dl-check input { width: auto; margin: 0; }
 
 #tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;

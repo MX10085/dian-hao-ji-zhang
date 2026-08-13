@@ -15,7 +15,8 @@
   };
   const DEFAULTS = {
     vehicles: [{ id: 'v1', name: '极核 AE6+', settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), records: [] }],
-    activeVehicleId: 'v1'
+    activeVehicleId: 'v1',
+    autoDownload: false
   };
 
   const SAMPLE = [
@@ -56,7 +57,8 @@
               records: Array.isArray(v.records) ? v.records : []
             };
           }),
-          activeVehicleId: data.activeVehicleId || data.vehicles[0].id
+          activeVehicleId: data.activeVehicleId || data.vehicles[0].id,
+          autoDownload: !!data.autoDownload
         };
       }
       /* 旧版单车辆数据迁移 */
@@ -64,7 +66,8 @@
       if (settings.unit === 'Wh/km') settings.unit = 'kWh/100km';
       return {
         vehicles: [{ id: 'v1', name: settings.vehicleName || '我的车', settings: settings, records: Array.isArray(data.records) ? data.records : [] }],
-        activeVehicleId: 'v1'
+        activeVehicleId: 'v1',
+        autoDownload: false
       };
     } catch (e) {
       return JSON.parse(JSON.stringify(DEFAULTS));
@@ -118,18 +121,22 @@
   function saveBackups(list) {
     localStorage.setItem(BACKUP_KEY, JSON.stringify(list));
   }
-  function createBackup() {
+  function createBackup(download) {
     const list = loadBackups();
     list.unshift({ date: Util.todayStr(), savedAt: new Date().toISOString(), data: JSON.parse(JSON.stringify(state)) });
     if (list.length > 15) list.length = 15;
     saveBackups(list);
     renderBackupList();
+    if (download) {
+      Util.download('energy-backup-' + Util.todayStr() + '.json', JSON.stringify(list[0].data, null, 2), 'application/json');
+      toast('已自动下载今日备份');
+    }
   }
   function ensureDailyBackup(force) {
-    if (force) { createBackup(); toast('已备份'); return; }
+    if (force) { createBackup(state.autoDownload); toast('已备份'); return; }
     const list = loadBackups();
     if (list.length && list[0].date === Util.todayStr()) return;
-    createBackup();
+    createBackup(state.autoDownload);
   }
   function renderBackupList() {
     const el = $('#backup-list');
@@ -142,6 +149,7 @@
         '<div class="rec-sub">' + Util.esc(String(b.savedAt || '').replace('T', ' ').slice(0, 16)) + '</div></div>' +
         '<div class="rec-actions">' +
         '<button type="button" class="edit" data-act="restore" title="恢复">↩</button>' +
+        '<button type="button" class="edit" data-act="export" title="导出">↓</button>' +
         '<button type="button" class="del" data-act="del" title="删除">🗑</button></div></div>';
     }).join('');
   }
@@ -155,9 +163,11 @@
       const settings = Object.assign({}, JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), state.settings || {});
       state = {
         vehicles: [{ id: 'v1', name: settings.vehicleName || '我的车', settings: settings, records: state.records || [] }],
-        activeVehicleId: 'v1'
+        activeVehicleId: 'v1',
+        autoDownload: false
       };
     }
+    if (typeof state.autoDownload !== 'boolean') state.autoDownload = false;
     save();
     renderAll();
     toast('已恢复 ' + b.date + ' 的备份');
@@ -168,6 +178,13 @@
     saveBackups(list);
     renderBackupList();
     toast('已删除备份');
+  }
+  function exportBackup(idx) {
+    const list = loadBackups();
+    const b = list[idx];
+    if (!b) return;
+    Util.download('energy-backup-' + b.date + '.json', JSON.stringify(b.data, null, 2), 'application/json');
+    toast('已导出 ' + b.date + ' 的备份');
   }
 
   /* ---------- 记录页（概览 + 充电记录） ---------- */
@@ -585,6 +602,8 @@
     f.chargerEfficiency.value = s.chargerEfficiency;
     f.defaultPrice.value = s.defaultPrice;
     f.unit.value = s.unit;
+    const dl = $('#auto-download');
+    if (dl) dl.checked = !!state.autoDownload;
     renderVehiclePanel();
   }
 
@@ -814,6 +833,11 @@
 
     /* 每日自动备份 */
     $('#btn-backup-now').addEventListener('click', function () { ensureDailyBackup(true); });
+    $('#auto-download').addEventListener('change', function () {
+      state.autoDownload = this.checked;
+      save();
+      if (this.checked) ensureDailyBackup(true);
+    });
     $('#backup-list').addEventListener('click', function (ev) {
       const btn = ev.target.closest('button[data-act]');
       if (!btn) return;
@@ -821,6 +845,7 @@
       const idx = row ? Number(row.dataset.idx) : -1;
       if (idx < 0) return;
       if (btn.dataset.act === 'restore') restoreBackup(idx);
+      else if (btn.dataset.act === 'export') exportBackup(idx);
       else if (btn.dataset.act === 'del') deleteBackup(idx);
     });
   }
