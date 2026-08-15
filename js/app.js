@@ -646,6 +646,7 @@
     renderExpenses();
     renderSettings();
     renderBackupList();
+    renderSyncPanel();
   }
 
   function renderVehicle() {
@@ -857,12 +858,103 @@
     });
   }
 
+  /* ---------- Node-RED 自动记录同步 ---------- */
+  const SYNC_KEY = 'energy-tracker.nodered';
+
+  function loadSyncInfo() {
+    try { return JSON.parse(localStorage.getItem(SYNC_KEY) || '{}'); } catch (e) { return {}; }
+  }
+  function saveSyncInfo(info) {
+    localStorage.setItem(SYNC_KEY, JSON.stringify(info));
+  }
+  function defaultSyncUrl() {
+    return 'http://192.168.2.10:1880/api/records';
+  }
+  function renderSyncPanel() {
+    const urlEl = $('#sync-url');
+    const statusEl = $('#sync-status');
+    if (!urlEl || !statusEl) return;
+    const info = loadSyncInfo();
+    urlEl.value = info.url || defaultSyncUrl();
+    statusEl.textContent = info.lastSync ? '上次同步：' + String(info.lastSync).replace('T', ' ').slice(0, 16) + '（接口共 ' + (info.lastCount || 0) + ' 条）' : '';
+  }
+  function normalizeNodeRedRecord(r) {
+    return {
+      id: r.id || Util.uid(),
+      date: r.date || '',
+      time: r.time || '',
+      mileage: r.mileage != null ? Number(r.mileage) : null,
+      socStart: r.socStart != null ? Number(r.socStart) : null,
+      socEnd: r.socEnd != null ? Number(r.socEnd) : null,
+      energyKwh: r.energyKwh != null ? Number(r.energyKwh) : null,
+      cost: r.cost != null ? Number(r.cost) : null,
+      price: r.price != null ? Number(r.price) : null,
+      full: !!r.full,
+      type: r.type || '家充',
+      note: r.note || '',
+      battery: r.battery || '未知',
+      source: 'node-red'
+    };
+  }
+  async function syncNodeRed() {
+    const url = ($('#sync-url').value || '').trim() || defaultSyncUrl();
+    const statusEl = $('#sync-status');
+    statusEl.textContent = '同步中…';
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const arr = await res.json();
+      if (!Array.isArray(arr)) throw new Error('返回格式不是数组');
+      const v = currentVehicle();
+      const ids = {};
+      v.records.forEach(function (r) { if (r.id) ids[r.id] = true; });
+      let added = 0, skipped = 0;
+      arr.forEach(function (r) {
+        if (!r || typeof r !== 'object') return;
+        if (!r.id) r.id = Util.uid();
+        if (ids[r.id]) { skipped++; return; }
+        v.records.push(normalizeNodeRedRecord(r));
+        ids[r.id] = true;
+        added++;
+      });
+      save();
+      saveSyncInfo({ url: url, lastSync: new Date().toISOString(), lastCount: arr.length });
+      renderAll();
+      statusEl.textContent = '同步完成：新增 ' + added + ' 条' + (skipped ? '，跳过 ' + skipped + ' 条重复' : '') + '（接口共 ' + arr.length + ' 条）';
+      toast(added ? '已同步 ' + added + ' 条新记录' : '没有新记录');
+    } catch (e) {
+      statusEl.textContent = '同步失败：' + (e && e.message ? e.message : e) + '。注意：https 页面不能访问局域网 http，请用局域网地址打开应用（如 http://192.168.2.99:8000）再同步。';
+    }
+  }
+  async function checkNodeRed() {
+    const url = ($('#sync-url').value || '').trim() || defaultSyncUrl();
+    const base = url.replace(/\/api\/records.*$/, '/api/status');
+    const statusEl = $('#sync-status');
+    statusEl.textContent = '检查中…';
+    try {
+      const res = await fetch(base);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const st = await res.json();
+      let text = '连接正常：已有记录 ' + (st.count || 0) + ' 条';
+      if (st.pending) text += '，挂起换电（充电前 ' + st.pending.soc_before + '%）';
+      if (st.session && st.session.active) text += '，正在充电';
+      statusEl.textContent = text;
+      toast('Node-RED 连接正常');
+    } catch (e) {
+      statusEl.textContent = '检查失败：' + (e && e.message ? e.message : e) + '。注意：https 页面不能访问局域网 http，请用局域网地址打开应用。';
+    }
+  }
+  function bindSyncEvents() {
+    $('#btn-sync-node-red').addEventListener('click', syncNodeRed);
+    $('#btn-check-nodered').addEventListener('click', checkNodeRed);
+  }
   /* ---------- PWA ---------- */
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     navigator.serviceWorker.register('./sw.js').catch(function () { /* 静默失败 */ });
   }
 
   bindEvents();
+  bindSyncEvents();
   renderAll();
   ensureDailyBackup(false);
   setInterval(function () { ensureDailyBackup(false); }, 60 * 60 * 1000);
