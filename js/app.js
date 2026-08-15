@@ -868,7 +868,7 @@
     localStorage.setItem(SYNC_KEY, JSON.stringify(info));
   }
   function defaultSyncUrl() {
-    return 'http://192.168.2.10:1880/api/records';
+    return 'https://hass.cloud-link.me:1443/api/records';
   }
   function renderSyncPanel() {
     const urlEl = $('#sync-url');
