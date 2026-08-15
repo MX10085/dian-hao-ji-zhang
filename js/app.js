@@ -393,23 +393,30 @@
     let energy = Util.toNum($('#f-energy').value);
     let price = Util.toNum($('#f-price').value);
     let cost = Util.toNum($('#f-cost').value);
-    if (trigger !== 'energy' && energy == null && cost != null && price != null && price > 0) {
-      energy = cost / price;
-      $('#f-energy').value = round2(energy);
+    /* 反推：费用+单价 → 充电量（充电量为空时） */
+    if (energy == null && cost != null && price != null && price > 0) {
+      energy = round2(cost / price);
+      $('#f-energy').value = energy;
     }
-    if (trigger !== 'price' && price == null && cost != null && energy != null && energy > 0) {
-      $('#f-price').value = round2(cost / energy);
+    /* 反推：费用+充电量 → 单价（单价为空时） */
+    if (price == null && cost != null && energy != null && energy > 0) {
+      price = round2(cost / energy);
+      $('#f-price').value = price;
     }
-    if (trigger !== 'cost' && cost == null && energy != null && price != null) {
-      $('#f-cost').value = round2(energy * price);
+    /* 充电量+单价 → 费用：不在编辑费用字段时就实时跟随 */
+    if (trigger !== 'cost' && energy != null && price != null) {
+      cost = round2(energy * price);
+      $('#f-cost').value = cost;
     }
-    if (Util.toNum($('#f-energy').value) == null) {
+    /* 无充电量时按电量差估算 */
+    if (energy == null) {
       const s0 = Util.toNum($('#f-socStart').value);
       const e0 = Util.toNum($('#f-socEnd').value);
       if (s0 != null && e0 != null && e0 > s0) {
-        const est = s.batteryCapacityWh / 1000 * (e0 - s0) / 100 / s.chargerEfficiency;
-        $('#f-energy').value = round2(est);
-        if (Util.toNum($('#f-price').value) == null) $('#f-price').value = s.defaultPrice;
+        energy = round2(s.batteryCapacityWh / 1000 * (e0 - s0) / 100 / s.chargerEfficiency);
+        $('#f-energy').value = energy;
+        if (price == null) { price = s.defaultPrice; $('#f-price').value = price; }
+        if (trigger !== 'cost') $('#f-cost').value = round2(energy * price);
       }
     }
   }
@@ -720,6 +727,9 @@
     ['f-socStart', 'f-socEnd'].forEach(function (id) {
       $('#' + id).addEventListener('change', function () { autoFill('soc'); });
     });
+    $('#f-full').addEventListener('change', function () {
+      if (this.checked) $('#f-socEnd').value = 100;
+    });
     $('#record-list').addEventListener('click', function (ev) {
       const btn = ev.target.closest('button[data-act]');
       if (!btn) return;
@@ -1008,6 +1018,14 @@
     $('#btn-sync-node-red').addEventListener('click', syncNodeRed);
     $('#btn-check-nodered').addEventListener('click', checkNodeRed);
     $('#btn-nas-backup').addEventListener('click', pushBackupNow);
+    document.addEventListener('selectionchange', function () {
+      const el = document.activeElement;
+      if (el && el.id === 'sync-url') {
+        setTimeout(function () {
+          el.scrollLeft = caretScrollLeft(el, el.selectionStart != null ? el.selectionStart : el.value.length);
+        }, 0);
+      }
+    });
     const syncUrlEl = $('#sync-url');
     ['input', 'keyup', 'keydown', 'click'].forEach(function (t) {
       syncUrlEl.addEventListener(t, function () {
