@@ -1,5 +1,5 @@
 /* 简单的离线缓存：首次访问后即可离线使用 */
-const CACHE = 'energy-tracker-v50';
+const CACHE = 'energy-tracker-v51';
 const ASSETS = [
   './',
   './index.html',

@@ -219,8 +219,8 @@
       statCard('总里程(表显)', Util.fmt(curMile, 1), 'km', true) +
       statCard('预计续航', estKm != null ? Util.fmt(estKm, 0) : '—', 'km', estKm != null) +
       statCard('累计充电', Util.fmt(s.totalWallKwh, 2), 'kWh', true) +
-      statCard('平均电耗(车端)', fmtEff(s.avgWhPerKm), unitLabel(), true) +
-      statCard('平均电耗(墙端)', fmtEff(s.avgWallWhPerKm), unitLabel()) +
+
+      statCard('平均电耗', fmtEff(s.avgWallWhPerKm), unitLabel(), true) +
       statCard('每公里成本', Util.fmt(s.avgCostPerKm, 3), '元');
 
     renderBatteryHealth(TrackerCalc.batteryHealth(v.records, v.settings));
