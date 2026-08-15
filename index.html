@@ -140,20 +140,6 @@
     </form>
 
     <div class="panel">
-      <h2>数据导入导出</h2>
-      <div class="data-actions">
-        <button id="btn-import" class="btn" type="button">导入数据</button>
-        <button id="btn-export" class="btn" type="button">导出备份</button>
-      </div>
-      <div class="data-actions">
-        <button id="btn-export-csv" class="btn" type="button">导出 CSV</button>
-        <button id="btn-sample" class="btn" type="button">加载示例数据</button>
-      </div>
-      <input type="file" id="file-input" accept=".csv,.json,text/csv,application/json" multiple hidden />
-      <p class="muted">「导出备份」生成 JSON（含设置与全部记录）；导入支持小熊油耗 CSV、通用 CSV、本应用 JSON 备份。</p>
-    </div>
-
-    <div class="panel">
       <h2>Node-RED 自动记录同步</h2>
       <label class="muted" for="sync-url">Node-RED 接口地址</label>
       <input id="sync-url" class="form-input" type="text" placeholder="http://你的Node-RED地址:1880/api/records" />
@@ -165,8 +151,18 @@
     </div>
 
     <div class="panel">
-      <h2>每日自动备份</h2>
-      <p class="muted">每天自动在本地保存一份数据快照（保留最近 15 份），打开应用时自动执行，页面开着时每小时检查一次。电脑端建议定期手动「导出备份」存到别处更保险。</p>
+      <h2>数据与备份</h2>
+      <p class="muted">导入 / 导出：</p>
+      <div class="data-actions">
+        <button id="btn-import" class="btn" type="button">导入数据</button>
+        <button id="btn-export" class="btn" type="button">导出备份(JSON)</button>
+      </div>
+      <div class="data-actions">
+        <button id="btn-export-csv" class="btn" type="button">导出 CSV</button>
+        <button id="btn-sample" class="btn" type="button">加载示例数据</button>
+      </div>
+      <input type="file" id="file-input" accept=".csv,.json,text/csv,application/json" multiple hidden />
+      <p class="muted" style="margin-top:8px">自动备份：每天本地保存 15 份快照，设置 Node-RED 地址后同步推送一份到 NAS；可开启每天自动下载备份文件。浏览器缓存被清会丢本地数据，建议定期「导出备份」存到别处。</p>
       <label class="auto-dl-check"><input id="auto-download" type="checkbox" /> 每天自动下载备份文件（打开应用时触发一次）</label>
       <div class="data-actions">
         <button id="btn-backup-now" class="btn" type="button">立即备份</button>
@@ -211,7 +207,7 @@
     </label>
     <div class="grid2">
       <label>电价（元/度）<input id="f-price" type="number" step="any" min="0" /></label>
-      <label>费用（元）<input id="f-cost" type="number" step="any" min="0" /></label>
+      <label>费用（元）<input id="f-cost" type="number" step="any" min="0" /><small>填入充电量和电价后自动计算</small></label>
     </div>
     <div class="grid2">
       <label class="check"><input id="f-full" type="checkbox" checked /> 充满</label>

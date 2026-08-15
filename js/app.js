@@ -4,7 +4,7 @@
   const $ = Util.$, $$ = Util.$$;
   const STORE_KEY = 'energy-tracker.v1';
   const BACKUP_KEY = 'energy-tracker.backups.v1';
-  const APP_VERSION = 'v1.0';
+  const APP_VERSION = 'v1.1';
 
   const DEFAULT_SETTINGS = {
     vehicleName: '极核 AE6+',
@@ -715,6 +715,7 @@
     });
     ['f-energy', 'f-price', 'f-cost'].forEach(function (id) {
       $('#' + id).addEventListener('input', function () { autoFill(id.slice(2)); });
+      $('#' + id).addEventListener('change', function () { autoFill(id.slice(2)); });
     });
     ['f-socStart', 'f-socEnd'].forEach(function (id) {
       $('#' + id).addEventListener('change', function () { autoFill('soc'); });
@@ -989,17 +990,32 @@
       el.textContent = info ? 'NAS 备份：' + String(info.time).replace('T', ' ').slice(0, 16) + (info.ok ? ' 成功' : ' 失败') : '';
     } catch (e) { el.textContent = ''; }
   }
+  function caretScrollLeft(el, pos) {
+    try {
+      const cs = getComputedStyle(el);
+      const span = document.createElement('span');
+      span.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;font:' + cs.font + ';';
+      span.textContent = el.value.slice(0, pos);
+      document.body.appendChild(span);
+      const w = span.getBoundingClientRect().width;
+      document.body.removeChild(span);
+      const padL = parseFloat(cs.paddingLeft) || 0;
+      const padR = parseFloat(cs.paddingRight) || 0;
+      return Math.max(0, w - (el.clientWidth - padL - padR));
+    } catch (e) { return el.scrollWidth; }
+  }
   function bindSyncEvents() {
     $('#btn-sync-node-red').addEventListener('click', syncNodeRed);
     $('#btn-check-nodered').addEventListener('click', checkNodeRed);
     $('#btn-nas-backup').addEventListener('click', pushBackupNow);
     const syncUrlEl = $('#sync-url');
-    syncUrlEl.addEventListener('focus', function () {
-      const el = this;
-      setTimeout(function () {
-        el.scrollLeft = el.scrollWidth;
-        try { el.setSelectionRange(el.value.length, el.value.length); } catch (e) {}
-      }, 0);
+    ['input', 'keyup', 'keydown', 'click'].forEach(function (t) {
+      syncUrlEl.addEventListener(t, function () {
+        const el = this;
+        setTimeout(function () {
+          el.scrollLeft = caretScrollLeft(el, el.selectionStart != null ? el.selectionStart : el.value.length);
+        }, 0);
+      });
     });
   }
   /* ---------- PWA ---------- */
