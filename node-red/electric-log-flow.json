@@ -602,5 +602,53 @@
         "el-fn-finalize"
       ]
     ]
+  },
+  {
+    "id": "el-http-backup",
+    "type": "http in",
+    "z": "el-tab",
+    "name": "POST /api/backup",
+    "url": "/api/backup",
+    "method": "post",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 200,
+    "y": 700,
+    "wires": [
+      [
+        "el-fn-backup"
+      ]
+    ]
+  },
+  {
+    "id": "el-fn-backup",
+    "type": "function",
+    "z": "el-tab",
+    "name": "保存备份到NAS",
+    "func": "const TOKEN = '改成你的令牌';\nif (!msg.req || !msg.req.query || msg.req.query.token !== TOKEN) {\n  msg.statusCode = 403;\n  msg.payload = { error: 'forbidden' };\n  msg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };\n  return msg;\n}\nconst fsx = global.get('fs');\nconst dir = '/data/electric-log';\ntry { fsx.mkdirSync(dir, { recursive: true }); } catch (e) {}\nconst body = typeof msg.payload === 'string' ? msg.payload : JSON.stringify(msg.payload);\nconst date = new Date().toISOString().slice(0, 10);\nconst file = 'app_backup_' + date + '.json';\nfsx.writeFileSync(dir + '/' + file, body);\nmsg.payload = { ok: true, file: file };\nmsg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 400,
+    "y": 700,
+    "wires": [
+      [
+        "el-http-resp-backup"
+      ]
+    ]
+  },
+  {
+    "id": "el-http-resp-backup",
+    "type": "http response",
+    "z": "el-tab",
+    "name": "返回备份结果",
+    "statusCode": "",
+    "headers": {},
+    "x": 580,
+    "y": 700,
+    "wires": []
   }
 ]

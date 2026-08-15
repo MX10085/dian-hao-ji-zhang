@@ -132,6 +132,18 @@
       Util.download('energy-backup-' + Util.todayStr() + '.json', JSON.stringify(list[0].data, null, 2), 'application/json');
       toast('已自动下载今日备份');
     }
+    /* 同步备份到 NAS（Node-RED /api/backup） */
+    const syncRaw = $('#sync-url') ? ($('#sync-url').value || '').trim() : '';
+    if (syncRaw) {
+      try {
+        const u = new URL(syncRaw);
+        u.pathname = '/api/backup';
+        pushBackupToNodeRed(u.toString()).then(function (ok) {
+          localStorage.setItem('energy-tracker.nasbackup', JSON.stringify({ time: new Date().toISOString(), ok: ok }));
+          renderNasBackupStatus();
+        });
+      } catch (e) {}
+    }
   }
   function ensureDailyBackup(force) {
     if (force) { createBackup(state.autoDownload); toast('已备份'); return; }
@@ -647,6 +659,7 @@
     renderSettings();
     renderBackupList();
     renderSyncPanel();
+    renderNasBackupStatus();
   }
 
   function renderVehicle() {
@@ -931,7 +944,12 @@
     const url = ($('#sync-url').value || '').trim();
     const statusEl = $('#sync-status');
     if (!url) { statusEl.textContent = '请先填写 Node-RED 接口地址'; return; }
-    const base = url.replace(/\/api\/records.*$/, '/api/status');
+    let base = url;
+    try {
+      const u = new URL(url);
+      u.pathname = '/api/status';
+      base = u.toString();
+    } catch (e) {}
     statusEl.textContent = '检查中…';
     try {
       const res = await fetch(base);
@@ -946,9 +964,43 @@
       statusEl.textContent = '检查失败：' + (e && e.message ? e.message : e) + '。注意：https 页面不能访问局域网 http，请用局域网地址打开应用。';
     }
   }
+  function pushBackupToNodeRed(url) {
+    return fetch(url, {
+      method: 'POST',
+      body: JSON.stringify({ app: 'energy-tracker', savedAt: new Date().toISOString(), vehicles: state.vehicles, activeVehicleId: state.activeVehicleId }),
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' }
+    }).then(function (res) { return res.ok; }).catch(function () { return false; });
+  }
+  async function pushBackupNow() {
+    const raw = ($('#sync-url').value || '').trim();
+    if (!raw) { toast('请先填写 Node-RED 接口地址'); return; }
+    let backupUrl;
+    try { const u = new URL(raw); u.pathname = '/api/backup'; backupUrl = u.toString(); } catch (e) { toast('接口地址格式不对'); return; }
+    const ok = await pushBackupToNodeRed(backupUrl);
+    localStorage.setItem('energy-tracker.nasbackup', JSON.stringify({ time: new Date().toISOString(), ok: ok }));
+    renderNasBackupStatus();
+    toast(ok ? '已备份到 NAS' : '备份到 NAS 失败');
+  }
+  function renderNasBackupStatus() {
+    const el = $('#nas-backup-status');
+    if (!el) return;
+    try {
+      const info = JSON.parse(localStorage.getItem('energy-tracker.nasbackup') || 'null');
+      el.textContent = info ? 'NAS 备份：' + String(info.time).replace('T', ' ').slice(0, 16) + (info.ok ? ' 成功' : ' 失败') : '';
+    } catch (e) { el.textContent = ''; }
+  }
   function bindSyncEvents() {
     $('#btn-sync-node-red').addEventListener('click', syncNodeRed);
     $('#btn-check-nodered').addEventListener('click', checkNodeRed);
+    $('#btn-nas-backup').addEventListener('click', pushBackupNow);
+    const syncUrlEl = $('#sync-url');
+    syncUrlEl.addEventListener('focus', function () {
+      const el = this;
+      setTimeout(function () {
+        el.scrollLeft = el.scrollWidth;
+        try { el.setSelectionRange(el.value.length, el.value.length); } catch (e) {}
+      }, 0);
+    });
   }
   /* ---------- PWA ---------- */
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

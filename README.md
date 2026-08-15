@@ -85,7 +85,7 @@
   - `pending_swap.json`：挂起换电数据（防 Node-RED 重启丢失）
   - `charging_session.json`：进行中的充电会话
   - `records.jsonl`：最终记录（一行一条 JSON）
-- HTTP 接口（Node-RED 内置）：`GET /api/records`、`GET /api/status`
+- HTTP 接口（Node-RED 内置）：`GET /api/records`、`GET /api/status`、`POST /api/backup`（app 备份推送到 NAS，保存为 `app_backup_日期.json`）
 
 ### 可调参数
 
@@ -139,7 +139,7 @@ CSV 12 字段格式（与官方文档一致）：
 
 ## 数据备份
 
-数据存在浏览器 localStorage 里。应用每天会自动保存一份本地快照（保留最近 15 份，可在设置页查看和恢复）；但浏览器缓存被清会连同快照一起丢失，所以电脑端仍建议定期点「导出备份」把 JSON 文件存到别处。换手机/浏览器时点「导入」选择备份文件即可恢复（v1 单车辆旧备份也兼容）。
+数据存在浏览器 localStorage 里。应用每天会自动保存一份本地快照（保留最近 15 份，可在设置页查看和恢复）；设置了 Node-RED 地址后，每日备份还会同步推送一份到 NAS（保存为 `app_backup_日期.json`），本地快照始终保留、推送失败不影响。但浏览器缓存被清仍可能丢失本地数据，电脑端建议定期点「导出备份」把 JSON 存到别处。换手机/浏览器时点「导入」选择备份文件即可恢复（v1 单车辆旧备份也兼容）。
 
 ## 测试
 
