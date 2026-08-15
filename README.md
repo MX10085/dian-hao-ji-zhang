@@ -64,12 +64,12 @@
 
 ### 实体配置（通用）
 
-| 数据 | 需要的实体 | 示例（作者环境） |
+| 数据 | 需要的实体（示例名称，按你的替换） |
 | --- | --- | --- |
-| 车上电量（0–100） | 电量传感器 | `sensor.zeeho_ae6_dian_liang` |
-| 总里程 | 累计里程传感器 | `sensor.yi_lou_ru_hu_zeeho_ae6_zong_li_cheng` |
-| 插座功率（W） | 功率传感器 | `sensor.0x00158d000926d0fa_power` |
-| 累计电量（kWh） | 能量累计传感器 | `sensor.0x00158d000926d0fa_energy` |
+| 车上电量（0–100） | 电量传感器（如 `sensor.battery_level`） |
+| 总里程 | 累计里程传感器（如 `sensor.total_odometer`） |
+| 插座功率（W） | 功率传感器（如 `sensor.charger_power`） |
+| 累计电量（kWh） | 能量累计传感器（如 `sensor.charger_energy`） |
 
 ### 工作流程
 

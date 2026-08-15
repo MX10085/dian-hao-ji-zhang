@@ -11,7 +11,7 @@
     "id": "el-c1",
     "type": "comment",
     "name": "① 换电检测：电量跳变 ≥90%",
-    "info": "sensor.zeeho_ae6_dian_liang 从 <90% 跳到 ≥90%，判定新电池装车，把跳变前电量与当前总里程存入挂起文件",
+    "info": "sensor.battery_level 从 <90% 跳到 ≥90%，判定新电池装车，把跳变前电量与当前总里程存入挂起文件",
     "z": "el-tab",
     "wires": []
   },
@@ -20,13 +20,13 @@
     "type": "server-state-changed",
     "z": "el-tab",
     "name": "AE6 电量变化",
-    "server": "99c664b867ad2e30",
+    "server": "",
     "version": 6,
     "outputs": 1,
     "exposeAsEntityConfig": "",
     "entities": {
       "entity": [
-        "sensor.zeeho_ae6_dian_liang"
+        "sensor.battery_level"
       ],
       "substring": [],
       "regex": []
@@ -98,13 +98,13 @@
     "type": "api-current-state",
     "z": "el-tab",
     "name": "读总里程",
-    "server": "99c664b867ad2e30",
+    "server": "",
     "version": 3,
     "outputs": 1,
     "halt_if": "",
     "halt_if_type": "str",
     "halt_if_compare": "is",
-    "entity_id": "sensor.yi_lou_ru_hu_zeeho_ae6_zong_li_cheng",
+    "entity_id": "sensor.total_odometer",
     "state_type": "str",
     "blockInputOverrides": false,
     "outputProperties": [
@@ -180,7 +180,7 @@
     "type": "comment",
     "z": "el-tab",
     "name": "② 插座充电会话：功率积分",
-    "info": "sensor.0x00158d000926d0fa_power >8W 开始，<8W 持续 2 分钟确认结束，积分得到墙端度数（会话状态写入文件防重启丢失）。功率单位默认 W，若实体是 kW 请把 WATT_SCALE 改为 1000",
+    "info": "sensor.charger_power >8W 开始，<8W 持续 2 分钟确认结束，积分得到墙端度数（会话状态写入文件防重启丢失）。功率单位默认 W，若实体是 kW 请把 WATT_SCALE 改为 1000",
     "wires": []
   },
   {
@@ -188,13 +188,13 @@
     "type": "server-state-changed",
     "z": "el-tab",
     "name": "插座功率变化",
-    "server": "99c664b867ad2e30",
+    "server": "",
     "version": 6,
     "outputs": 1,
     "exposeAsEntityConfig": "",
     "entities": {
       "entity": [
-        "sensor.0x00158d000926d0fa_power"
+        "sensor.charger_power"
       ],
       "substring": [],
       "regex": []
@@ -294,13 +294,13 @@
     "type": "api-current-state",
     "z": "el-tab",
     "name": "确认当前功率",
-    "server": "99c664b867ad2e30",
+    "server": "",
     "version": 3,
     "outputs": 1,
     "halt_if": "",
     "halt_if_type": "str",
     "halt_if_compare": "is",
-    "entity_id": "sensor.0x00158d000926d0fa_power",
+    "entity_id": "sensor.charger_power",
     "state_type": "str",
     "blockInputOverrides": false,
     "outputProperties": [
@@ -500,13 +500,13 @@
     "type": "api-current-state",
     "z": "el-tab",
     "name": "读充电前累计电量",
-    "server": "99c664b867ad2e30",
+    "server": "",
     "version": 3,
     "outputs": 1,
     "halt_if": "",
     "halt_if_type": "str",
     "halt_if_compare": "is",
-    "entity_id": "sensor.0x00158d000926d0fa_energy",
+    "entity_id": "sensor.charger_energy",
     "state_type": "str",
     "blockInputOverrides": false,
     "outputProperties": [
@@ -563,13 +563,13 @@
     "type": "api-current-state",
     "z": "el-tab",
     "name": "读充电后累计电量",
-    "server": "99c664b867ad2e30",
+    "server": "",
     "version": 3,
     "outputs": 1,
     "halt_if": "",
     "halt_if_type": "str",
     "halt_if_compare": "is",
-    "entity_id": "sensor.0x00158d000926d0fa_energy",
+    "entity_id": "sensor.charger_energy",
     "state_type": "str",
     "blockInputOverrides": false,
     "outputProperties": [

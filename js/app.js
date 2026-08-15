@@ -868,7 +868,7 @@
     localStorage.setItem(SYNC_KEY, JSON.stringify(info));
   }
   function defaultSyncUrl() {
-    return 'https://hass.cloud-link.me:1443/api/records';
+    return 'http://localhost:1880/api/records';
   }
   function renderSyncPanel() {
     const urlEl = $('#sync-url');
@@ -923,7 +923,7 @@
       statusEl.textContent = '同步完成：新增 ' + added + ' 条' + (skipped ? '，跳过 ' + skipped + ' 条重复' : '') + '（接口共 ' + arr.length + ' 条）';
       toast(added ? '已同步 ' + added + ' 条新记录' : '没有新记录');
     } catch (e) {
-      statusEl.textContent = '同步失败：' + (e && e.message ? e.message : e) + '。注意：https 页面不能访问局域网 http，请用局域网地址打开应用（如 http://192.168.2.99:8000）再同步。';
+      statusEl.textContent = '同步失败：' + (e && e.message ? e.message : e) + '。注意：https 页面不能访问局域网 http，请用局域网地址打开应用再同步。';
     }
   }
   async function checkNodeRed() {
