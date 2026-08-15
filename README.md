@@ -60,7 +60,7 @@
 2. **修改实体**：把 4 个实体 ID 换成你自己的（见下表）；`server-state-changed` 和 `api-current-state` 节点若提示，重新选择你的 HA 服务器；
 3. **暴露 fs**（Node-RED v4 必须）：在 `settings.js` 的 `functionGlobalContext` 里加一行 `fs: require('fs'),`，重启容器，否则接口会挂起；
 4. **反代（可选）**：Nginx Proxy Manager 加两个 Custom Location：`/api/records`、`/api/status` → 指向 Node-RED 地址；
-5. **app 同步**：设置页「Node-RED 自动记录同步」填接口地址（如 `http://nas:1880/api/records` 或反代后的 https 地址）→ 检查连接 → 同步记录。
+5. **app 同步**：设置页「Node-RED 自动记录同步」填接口地址（如 `http://nas:1880/api/records` 或反代后的 https 地址；接口带令牌时在地址后加 `?token=你的令牌`）→ 检查连接 → 同步记录。
 
 ### 实体配置（通用）
 
