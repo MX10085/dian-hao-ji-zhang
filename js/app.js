@@ -875,7 +875,7 @@
     const statusEl = $('#sync-status');
     if (!urlEl || !statusEl) return;
     const info = loadSyncInfo();
-    urlEl.value = info.url || defaultSyncUrl();
+    urlEl.value = info.url || ''; // 隐私：不预填具体地址
     statusEl.textContent = info.lastSync ? '上次同步：' + String(info.lastSync).replace('T', ' ').slice(0, 16) + '（接口共 ' + (info.lastCount || 0) + ' 条）' : '';
   }
   function normalizeNodeRedRecord(r) {
@@ -897,8 +897,9 @@
     };
   }
   async function syncNodeRed() {
-    const url = ($('#sync-url').value || '').trim() || defaultSyncUrl();
+    const url = ($('#sync-url').value || '').trim();
     const statusEl = $('#sync-status');
+    if (!url) { statusEl.textContent = '请先填写 Node-RED 接口地址'; return; }
     statusEl.textContent = '同步中…';
     try {
       const res = await fetch(url);
@@ -927,9 +928,10 @@
     }
   }
   async function checkNodeRed() {
-    const url = ($('#sync-url').value || '').trim() || defaultSyncUrl();
-    const base = url.replace(/\/api\/records.*$/, '/api/status');
+    const url = ($('#sync-url').value || '').trim();
     const statusEl = $('#sync-status');
+    if (!url) { statusEl.textContent = '请先填写 Node-RED 接口地址'; return; }
+    const base = url.replace(/\/api\/records.*$/, '/api/status');
     statusEl.textContent = '检查中…';
     try {
       const res = await fetch(base);
