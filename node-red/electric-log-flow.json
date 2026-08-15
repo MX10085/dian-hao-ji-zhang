@@ -1,0 +1,606 @@
+[
+  {
+    "id": "el-tab",
+    "type": "tab",
+    "label": "电耗记账 · 自动记录",
+    "disabled": false,
+    "info": "AE6 两电池交替充电自动记录：\n1. 电量跳变≥90% → 换电，存充电前电量+里程\n2. 插座>8W 开始会话，读累计电量表存起始值；<8W 持续2分钟结束\n3. 结束读累计电量表差值算度数（回退功率积分）\n4. <0.5kWh 视为插座他用，忽略且保留挂起数据\n5. 正常结束生成记录追加 records.jsonl；GET /api/records 供 app 同步",
+    "env": []
+  },
+  {
+    "id": "el-c1",
+    "type": "comment",
+    "name": "① 换电检测：电量跳变 ≥90%",
+    "info": "sensor.zeeho_ae6_dian_liang 从 <90% 跳到 ≥90%，判定新电池装车，把跳变前电量与当前总里程存入挂起文件",
+    "z": "el-tab",
+    "wires": []
+  },
+  {
+    "id": "el-evt-soc",
+    "type": "server-state-changed",
+    "z": "el-tab",
+    "name": "AE6 电量变化",
+    "server": "99c664b867ad2e30",
+    "version": 6,
+    "outputs": 1,
+    "exposeAsEntityConfig": "",
+    "entities": {
+      "entity": [
+        "sensor.zeeho_ae6_dian_liang"
+      ],
+      "substring": [],
+      "regex": []
+    },
+    "outputInitially": false,
+    "stateType": "str",
+    "ifState": "",
+    "ifStateType": "str",
+    "ifStateOperator": "is",
+    "outputOnlyOnStateChange": true,
+    "for": "0",
+    "forType": "num",
+    "forUnits": "minutes",
+    "ignorePrevStateNull": false,
+    "ignorePrevStateUnknown": false,
+    "ignorePrevStateUnavailable": false,
+    "ignoreCurrentStateUnknown": false,
+    "ignoreCurrentStateUnavailable": false,
+    "outputProperties": [
+      {
+        "property": "payload",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "entityState"
+      },
+      {
+        "property": "data",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "eventData"
+      },
+      {
+        "property": "topic",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "triggerId"
+      }
+    ],
+    "x": 160,
+    "y": 180,
+    "wires": [
+      [
+        "el-fn-jump"
+      ]
+    ]
+  },
+  {
+    "id": "el-fn-jump",
+    "type": "function",
+    "z": "el-tab",
+    "name": "换电判定",
+    "func": "const newS = Number(msg.payload);\nconst oldS = msg.data && msg.data.old_state ? Number(msg.data.old_state.state) : NaN;\nif (isNaN(oldS) || isNaN(newS)) return null;\nif (newS >= 90 && oldS < 90) {\n  flow.set('swapSocBefore', oldS);\n  return msg;\n}\nreturn null;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 350,
+    "y": 180,
+    "wires": [
+      [
+        "el-get-mile"
+      ]
+    ]
+  },
+  {
+    "id": "el-get-mile",
+    "type": "api-current-state",
+    "z": "el-tab",
+    "name": "读总里程",
+    "server": "99c664b867ad2e30",
+    "version": 3,
+    "outputs": 1,
+    "halt_if": "",
+    "halt_if_type": "str",
+    "halt_if_compare": "is",
+    "entity_id": "sensor.yi_lou_ru_hu_zeeho_ae6_zong_li_cheng",
+    "state_type": "str",
+    "blockInputOverrides": false,
+    "outputProperties": [
+      {
+        "property": "payload",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "entityState"
+      },
+      {
+        "property": "data",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "entity"
+      },
+      {
+        "property": "topic",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "triggerId"
+      }
+    ],
+    "for": 0,
+    "forType": "num",
+    "forUnits": "minutes",
+    "x": 530,
+    "y": 180,
+    "wires": [
+      [
+        "el-fn-save-pending"
+      ]
+    ]
+  },
+  {
+    "id": "el-fn-save-pending",
+    "type": "function",
+    "z": "el-tab",
+    "name": "保存挂起数据",
+    "func": "const fs = global.get('fs');\nconst dir = '/data/electric-log';\ntry { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}\nconst p = {\n  time: new Date().toISOString(),\n  soc_before: flow.get('swapSocBefore'),\n  mileage: Number(msg.payload) || null\n};\nfs.writeFileSync(dir + '/pending_swap.json', JSON.stringify(p, null, 2));\nnode.status({ text: '挂起: 前' + p.soc_before + '% 里程' + p.mileage, fill: 'blue' });\nmsg.payload = p;\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 710,
+    "y": 180,
+    "wires": [
+      [
+        "el-dbg-pending"
+      ]
+    ]
+  },
+  {
+    "id": "el-dbg-pending",
+    "type": "debug",
+    "z": "el-tab",
+    "name": "挂起数据",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 880,
+    "y": 180,
+    "wires": []
+  },
+  {
+    "id": "el-c2",
+    "type": "comment",
+    "z": "el-tab",
+    "name": "② 插座充电会话：功率积分",
+    "info": "sensor.0x00158d000926d0fa_power >8W 开始，<8W 持续 2 分钟确认结束，积分得到墙端度数（会话状态写入文件防重启丢失）。功率单位默认 W，若实体是 kW 请把 WATT_SCALE 改为 1000",
+    "wires": []
+  },
+  {
+    "id": "el-evt-pwr",
+    "type": "server-state-changed",
+    "z": "el-tab",
+    "name": "插座功率变化",
+    "server": "99c664b867ad2e30",
+    "version": 6,
+    "outputs": 1,
+    "exposeAsEntityConfig": "",
+    "entities": {
+      "entity": [
+        "sensor.0x00158d000926d0fa_power"
+      ],
+      "substring": [],
+      "regex": []
+    },
+    "outputInitially": false,
+    "stateType": "str",
+    "ifState": "",
+    "ifStateType": "str",
+    "ifStateOperator": "is",
+    "outputOnlyOnStateChange": true,
+    "for": "0",
+    "forType": "num",
+    "forUnits": "minutes",
+    "ignorePrevStateNull": false,
+    "ignorePrevStateUnknown": false,
+    "ignorePrevStateUnavailable": false,
+    "ignoreCurrentStateUnknown": false,
+    "ignoreCurrentStateUnavailable": false,
+    "outputProperties": [
+      {
+        "property": "payload",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "entityState"
+      },
+      {
+        "property": "data",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "eventData"
+      },
+      {
+        "property": "topic",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "triggerId"
+      }
+    ],
+    "x": 160,
+    "y": 360,
+    "wires": [
+      [
+        "el-fn-session"
+      ]
+    ]
+  },
+  {
+    "id": "el-fn-session",
+    "type": "function",
+    "z": "el-tab",
+    "name": "充电会话管理",
+    "func": "const fs = global.get('fs');\nconst WATT_SCALE = 1; // 功率实体单位：W=1；若为 kW 改 1000\nconst watts = Number(msg.payload) * WATT_SCALE;\nif (isNaN(watts)) return null;\nconst dir = '/data/electric-log';\nconst file = dir + '/charging_session.json';\nlet s = null;\ntry { s = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (err) {}\nconst now = Date.now();\nif (watts > 8) {\n  if (!s || !s.active) {\n    s = { started: now, last_ts: now, kwh: 0, energy_start: null, active: true };\n    fs.writeFileSync(file, JSON.stringify(s));\n    return [msg, null]; // 输出1：去读累计电量表，记录充电前读数\n  }\n  const dt = (now - s.last_ts) / 3600000;\n  if (dt > 0 && dt < 24) s.kwh += watts / 1000 * dt;\n  s.last_ts = now;\n  delete s.candidateSince;\n  fs.writeFileSync(file, JSON.stringify(s));\n  node.status({ text: '充电中 ' + s.kwh.toFixed(3) + ' kWh', fill: 'green' });\n  return null;\n}\nif (s && s.active) {\n  const dt = (now - s.last_ts) / 3600000;\n  if (dt > 0 && dt < 24) s.kwh += watts / 1000 * dt;\n  s.last_ts = now;\n  if (!s.candidateSince) s.candidateSince = now;\n  fs.writeFileSync(file, JSON.stringify(s));\n  return [null, msg]; // 输出2：低功率，进入2分钟确认\n}\nreturn null;",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 350,
+    "y": 360,
+    "wires": [
+      [
+        "el-get-en-start"
+      ],
+      [
+        "el-delay"
+      ]
+    ]
+  },
+  {
+    "id": "el-delay",
+    "type": "delay",
+    "z": "el-tab",
+    "name": "等待 2 分钟确认结束",
+    "pauseType": "delay",
+    "timeout": "2",
+    "timeoutUnits": "minutes",
+    "rate": "1",
+    "nbRateUnits": "1",
+    "rateUnits": "second",
+    "randomFirst": "1",
+    "randomLast": "5",
+    "randomUnits": "seconds",
+    "drop": false,
+    "allowrate": false,
+    "outputs": 1,
+    "x": 530,
+    "y": 360,
+    "wires": [
+      [
+        "el-get-pwr"
+      ]
+    ]
+  },
+  {
+    "id": "el-get-pwr",
+    "type": "api-current-state",
+    "z": "el-tab",
+    "name": "确认当前功率",
+    "server": "99c664b867ad2e30",
+    "version": 3,
+    "outputs": 1,
+    "halt_if": "",
+    "halt_if_type": "str",
+    "halt_if_compare": "is",
+    "entity_id": "sensor.0x00158d000926d0fa_power",
+    "state_type": "str",
+    "blockInputOverrides": false,
+    "outputProperties": [
+      {
+        "property": "payload",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "entityState"
+      },
+      {
+        "property": "data",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "entity"
+      },
+      {
+        "property": "topic",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "triggerId"
+      }
+    ],
+    "for": 0,
+    "forType": "num",
+    "forUnits": "minutes",
+    "x": 710,
+    "y": 360,
+    "wires": [
+      [
+        "el-fn-confirm-end"
+      ]
+    ]
+  },
+  {
+    "id": "el-fn-confirm-end",
+    "type": "function",
+    "z": "el-tab",
+    "name": "确认结束",
+    "func": "const fs = global.get('fs');\nconst WATT_SCALE = 1;\nconst watts = Number(msg.payload) * WATT_SCALE;\nconst dir = '/data/electric-log';\nlet s = null;\ntry { s = JSON.parse(fs.readFileSync(dir + '/charging_session.json', 'utf8')); } catch (e) {}\nif (!s || !s.active) return null;\nif (watts > 8) {\n  s.candidateSince = null;\n  fs.writeFileSync(dir + '/charging_session.json', JSON.stringify(s));\n  return null;\n}\ns.active = false;\nfs.writeFileSync(dir + '/charging_session.json', JSON.stringify(s));\nmsg.charge = s;\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 880,
+    "y": 360,
+    "wires": [
+      [
+        "el-get-en-end"
+      ]
+    ]
+  },
+  {
+    "id": "el-fn-finalize",
+    "type": "function",
+    "z": "el-tab",
+    "name": "生成充电记录",
+    "func": "const fs = global.get('fs');\nconst dir = '/data/electric-log';\nconst PRICE = 0.65;\nconst LOW_KWH = 0.5;\nconst ENERGY_SCALE = 1; // kWh=1；Wh=0.001\nlet s = null;\ntry { s = JSON.parse(fs.readFileSync(dir + '/charging_session.json', 'utf8')); } catch (e) {}\nlet kwh = null;\nif (s && s.energy_start != null) {\n  const endVal = Number(msg.payload) * ENERGY_SCALE;\n  if (!isNaN(endVal) && endVal >= s.energy_start) kwh = endVal - s.energy_start;\n}\nif (kwh == null && msg.charge && msg.charge.kwh != null) kwh = msg.charge.kwh; // 回退：功率积分\nif (kwh == null) kwh = 0;\nkwh = Math.round(kwh * 1000) / 1000;\nif (kwh < LOW_KWH) {\n  try { fs.unlinkSync(dir + '/charging_session.json'); } catch (e) {}\n  node.status({ text: '忽略: ' + kwh + ' kWh < 0.5，疑似插座他用', fill: 'yellow' });\n  return null;\n}\nlet pending = null;\ntry { pending = JSON.parse(fs.readFileSync(dir + '/pending_swap.json', 'utf8')); } catch (e) {}\nconst now = new Date();\nconst pad = n => String(n).padStart(2, '0');\nconst rec = {\n  id: 'nr-' + Date.now(),\n  date: now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()),\n  time: pad(now.getHours()) + ':' + pad(now.getMinutes()),\n  mileage: pending && pending.mileage != null ? pending.mileage : null,\n  socStart: pending ? pending.soc_before : null,\n  socEnd: 100,\n  energyKwh: kwh,\n  cost: Math.round(kwh * PRICE * 100) / 100,\n  price: PRICE,\n  full: true,\n  type: '家充',\n  battery: '未知',\n  note: pending ? '' : '未检测到换电',\n  source: 'node-red'\n};\ntry { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}\nfs.appendFileSync(dir + '/records.jsonl', JSON.stringify(rec) + String.fromCharCode(10));\ntry { fs.unlinkSync(dir + '/pending_swap.json'); } catch (e) {}\ntry { fs.unlinkSync(dir + '/charging_session.json'); } catch (e) {}\nnode.status({ text: '已记录 ' + rec.energyKwh + ' kWh @ ' + rec.date, fill: 'green' });\nmsg.payload = rec;\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1220,
+    "y": 360,
+    "wires": [
+      [
+        "el-dbg-final"
+      ]
+    ]
+  },
+  {
+    "id": "el-dbg-final",
+    "type": "debug",
+    "z": "el-tab",
+    "name": "新记录",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 1220,
+    "y": 360,
+    "wires": []
+  },
+  {
+    "id": "el-c3",
+    "type": "comment",
+    "z": "el-tab",
+    "name": "③ HTTP 接口（供 app 同步，已加 CORS）",
+    "info": "GET /api/records → JSON 数组；GET /api/status → 挂起/会话/最近记录",
+    "wires": []
+  },
+  {
+    "id": "el-http-rec",
+    "type": "http in",
+    "z": "el-tab",
+    "name": "GET /api/records",
+    "url": "/api/records",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 200,
+    "y": 540,
+    "wires": [
+      [
+        "el-fn-read-rec"
+      ]
+    ]
+  },
+  {
+    "id": "el-fn-read-rec",
+    "type": "function",
+    "z": "el-tab",
+    "name": "读取全部记录",
+    "func": "const fs = global.get('fs');\nconst file = '/data/electric-log/records.jsonl';\nlet arr = [];\ntry {\n  const lines = fs.readFileSync(file, 'utf8').split('\\n').filter(Boolean);\n  arr = lines.map(function (l) { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean);\n} catch (e) {}\nmsg.payload = arr;\nmsg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 400,
+    "y": 540,
+    "wires": [
+      [
+        "el-http-resp-rec"
+      ]
+    ]
+  },
+  {
+    "id": "el-http-resp-rec",
+    "type": "http response",
+    "z": "el-tab",
+    "name": "返回记录",
+    "statusCode": "",
+    "headers": {},
+    "x": 580,
+    "y": 540,
+    "wires": []
+  },
+  {
+    "id": "el-http-status",
+    "type": "http in",
+    "z": "el-tab",
+    "name": "GET /api/status",
+    "url": "/api/status",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 200,
+    "y": 620,
+    "wires": [
+      [
+        "el-fn-status"
+      ]
+    ]
+  },
+  {
+    "id": "el-fn-status",
+    "type": "function",
+    "z": "el-tab",
+    "name": "读取状态",
+    "func": "const fs = global.get('fs');\nconst dir = '/data/electric-log';\nconst out = { pending: null, session: null, last: null, count: 0 };\ntry { out.pending = JSON.parse(fs.readFileSync(dir + '/pending_swap.json', 'utf8')); } catch (e) {}\ntry { out.session = JSON.parse(fs.readFileSync(dir + '/charging_session.json', 'utf8')); } catch (e) {}\ntry {\n  const lines = fs.readFileSync(dir + '/records.jsonl', 'utf8').split('\\n').filter(Boolean);\n  out.count = lines.length;\n  if (lines.length) {\n    try { out.last = JSON.parse(lines[lines.length - 1]); } catch (e) {}\n  }\n} catch (e) {}\nmsg.payload = out;\nmsg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 400,
+    "y": 620,
+    "wires": [
+      [
+        "el-http-resp-status"
+      ]
+    ]
+  },
+  {
+    "id": "el-http-resp-status",
+    "type": "http response",
+    "z": "el-tab",
+    "name": "返回状态",
+    "statusCode": "",
+    "headers": {},
+    "x": 580,
+    "y": 620,
+    "wires": []
+  },
+  {
+    "id": "el-get-en-start",
+    "type": "api-current-state",
+    "z": "el-tab",
+    "name": "读充电前累计电量",
+    "server": "99c664b867ad2e30",
+    "version": 3,
+    "outputs": 1,
+    "halt_if": "",
+    "halt_if_type": "str",
+    "halt_if_compare": "is",
+    "entity_id": "sensor.0x00158d000926d0fa_energy",
+    "state_type": "str",
+    "blockInputOverrides": false,
+    "outputProperties": [
+      {
+        "property": "payload",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "entityState"
+      },
+      {
+        "property": "data",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "entity"
+      },
+      {
+        "property": "topic",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "triggerId"
+      }
+    ],
+    "for": 0,
+    "forType": "num",
+    "forUnits": "minutes",
+    "x": 530,
+    "y": 300,
+    "wires": [
+      [
+        "el-fn-set-en-start"
+      ]
+    ]
+  },
+  {
+    "id": "el-fn-set-en-start",
+    "type": "function",
+    "z": "el-tab",
+    "name": "保存充电前累计电量",
+    "func": "const fs = global.get('fs');\nconst ENERGY_SCALE = 1; // 累计电量单位：kWh=1；若为 Wh 改 0.001\nconst val = Number(msg.payload);\nconst dir = '/data/electric-log';\nconst file = dir + '/charging_session.json';\nlet s = null;\ntry { s = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) {}\nif (s && s.active) {\n  s.energy_start = isNaN(val) ? null : val * ENERGY_SCALE;\n  fs.writeFileSync(file, JSON.stringify(s));\n}\nreturn null;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 710,
+    "y": 300,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "el-get-en-end",
+    "type": "api-current-state",
+    "z": "el-tab",
+    "name": "读充电后累计电量",
+    "server": "99c664b867ad2e30",
+    "version": 3,
+    "outputs": 1,
+    "halt_if": "",
+    "halt_if_type": "str",
+    "halt_if_compare": "is",
+    "entity_id": "sensor.0x00158d000926d0fa_energy",
+    "state_type": "str",
+    "blockInputOverrides": false,
+    "outputProperties": [
+      {
+        "property": "payload",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "entityState"
+      },
+      {
+        "property": "data",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "entity"
+      },
+      {
+        "property": "topic",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "triggerId"
+      }
+    ],
+    "for": 0,
+    "forType": "num",
+    "forUnits": "minutes",
+    "x": 1050,
+    "y": 360,
+    "wires": [
+      [
+        "el-fn-finalize"
+      ]
+    ]
+  }
+]

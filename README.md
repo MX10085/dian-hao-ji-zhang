@@ -48,18 +48,26 @@
 
 **PWA**：用手机浏览器打开后可「添加到主屏幕」，像 APP 一样用，离线可用。
 
-## Home Assistant / Node-RED 自动记录
+## Home Assistant / Node-RED 自动记录（可选）
 
-两电池交替使用时，可让 Home Assistant + Node-RED 自动记录每一次充电，app 一键同步。
+两电池交替使用时，可让 Home Assistant + Node-RED 自动记录每一次充电，app 一键同步。流程文件在仓库 `node-red/electric-log-flow.json`。
 
-### 数据来源（HA 实体）
+### 使用步骤
 
-| 实体 | 用途 |
-| --- | --- |
-| `sensor.zeeho_ae6_dian_liang` | 车上电量，从 <90% 跳到 ≥90% 判定换电 |
-| `sensor.yi_lou_ru_hu_zeeho_ae6_zong_li_cheng` | 总里程，换电时记录 |
-| `sensor.0x00158d000926d0fa_power` | 插座功率（W），>8W 开始会话、<8W 持续 2 分钟结束 |
-| `sensor.0x00158d000926d0fa_energy` | 插座累计电量（kWh），会话起止读数差值算度数 |
+1. **导入流程**：Node-RED 菜单 → 导入 → 选择 `node-red/electric-log-flow.json` → 部署；
+2. **修改实体**：把 4 个实体 ID 换成你自己的（见下表）；`server-state-changed` 和 `api-current-state` 节点若提示，重新选择你的 HA 服务器；
+3. **暴露 fs**（Node-RED v4 必须）：在 `settings.js` 的 `functionGlobalContext` 里加一行 `fs: require('fs'),`，重启容器，否则接口会挂起；
+4. **反代（可选）**：Nginx Proxy Manager 加两个 Custom Location：`/api/records`、`/api/status` → 指向 Node-RED 地址；
+5. **app 同步**：设置页「Node-RED 自动记录同步」填接口地址（如 `http://nas:1880/api/records` 或反代后的 https 地址）→ 检查连接 → 同步记录。
+
+### 实体配置（通用）
+
+| 数据 | 需要的实体 | 示例（作者环境） |
+| --- | --- | --- |
+| 车上电量（0–100） | 电量传感器 | `sensor.zeeho_ae6_dian_liang` |
+| 总里程 | 累计里程传感器 | `sensor.yi_lou_ru_hu_zeeho_ae6_zong_li_cheng` |
+| 插座功率（W） | 功率传感器 | `sensor.0x00158d000926d0fa_power` |
+| 累计电量（kWh） | 能量累计传感器 | `sensor.0x00158d000926d0fa_energy` |
 
 ### 工作流程
 
@@ -71,18 +79,15 @@
 
 ### 文件与接口
 
-- 数据目录（容器内）：`/data/electric-log/`（NAS 上为 `/share/Container/node-red/electric-log/`）
+- 数据目录（容器内）：`/data/electric-log/`（可改），包含：
   - `pending_swap.json`：挂起换电数据（防 Node-RED 重启丢失）
   - `charging_session.json`：进行中的充电会话
   - `records.jsonl`：最终记录（一行一条 JSON）
 - HTTP 接口（Node-RED 内置）：`GET /api/records`、`GET /api/status`
-- 公网反代（Nginx Proxy Manager）：`https://hass.cloud.link.me:1443/api/records`、`/api/status`
 
-### app 同步
+### 可调参数
 
-设置页「Node-RED 自动记录同步」：接口地址默认公网反代地址，点「检查连接」可看挂起/充电状态，点「同步记录」按 id 去重合并进当前车辆。
-
-> 注意：Node-RED v4 函数节点默认没有 `require`，需在 `settings.js` 的 `functionGlobalContext` 加入 `fs: require('fs')`，流程函数内用 `global.get('fs')` 读取，否则接口会挂起。
+都在流程函数节点里：跳变阈值 90%、功率阈值 8W、结束确认 2 分钟、<0.5 kWh 忽略线、电价 0.65 元/度、功率单位 W / 电量单位 kWh（实体若是 kW/Wh 改对应系数）。
 
 ## 怎么运行
 
@@ -160,6 +165,7 @@ energy-tracker/
 ├── icon.svg              应用图标
 ├── samples/              小熊油耗 CSV 示例、本应用 JSON 备份示例
 ├── screenshots/          应用截图
+├── node-red/electric-log-flow.json  Node-RED 自动记录流程（导入用）
 └── tests/run.test.mjs    自动化测试
 ```
 
