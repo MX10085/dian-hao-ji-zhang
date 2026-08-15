@@ -4,7 +4,7 @@
   const $ = Util.$, $$ = Util.$$;
   const STORE_KEY = 'energy-tracker.v1';
   const BACKUP_KEY = 'energy-tracker.backups.v1';
-  const APP_VERSION = 'v1.1';
+  const APP_VERSION = 'v1.2';
 
   const DEFAULT_SETTINGS = {
     vehicleName: '极核 AE6+',
@@ -209,9 +209,15 @@
       return d == null ? '—' : Util.fmt(d, 1);
     };
     const days = companionDays();
+    const hs = loadHassStatus();
+    const hsFresh = hs && (Date.now() - hs.time) < 2 * 3600 * 1000;
+    const curMile = hsFresh && hs.mileage != null ? hs.mileage : s.lastMileage;
+    const curSoc = hsFresh && hs.soc != null ? hs.soc : null;
+    const estKm = curSoc != null && s.avgWhPerKm ? (v.settings.batteryCapacityWh * curSoc / 100) / s.avgWhPerKm : null;
     $('#stats').innerHTML =
       statCard('爱车相伴', days != null ? days : '—', '天', days != null) +
-      statCard('总里程(表显)', Util.fmt(s.lastMileage, 1), 'km', true) +
+      statCard('总里程(表显)', Util.fmt(curMile, 1), 'km', true) +
+      statCard('预计续航', estKm != null ? Util.fmt(estKm, 0) : '—', 'km', estKm != null) +
       statCard('累计充电', Util.fmt(s.totalWallKwh, 2), 'kWh', true) +
       statCard('平均电耗(车端)', fmtEff(s.avgWhPerKm), unitLabel(), true) +
       statCard('平均电耗(墙端)', fmtEff(s.avgWallWhPerKm), unitLabel()) +
@@ -330,6 +336,24 @@
     }, 2, 183);
 
     TrackerCharts.donutChart($('#chart-breakdown'), es.breakdown, { fmt: function (val) { return Util.fmt(val, 2); } });
+
+    const budgetEl = $('#budget-info');
+    if (budgetEl) {
+      const bv = currentVehicle();
+      const budget = Number(bv.settings.monthlyBudget) || 0;
+      const nowD = new Date();
+      const thisKey = nowD.getFullYear() + '-' + String(nowD.getMonth() + 1).padStart(2, '0');
+      const monthRec = es.monthTotals.find(function (m) { return m.month === thisKey; });
+      const spend = monthRec ? monthRec.total : 0;
+      if (budget > 0) {
+        const pct = spend / budget * 100;
+        budgetEl.className = pct > 100 ? 'budget-info over' : 'budget-info';
+        budgetEl.innerHTML = '本月支出 <b>' + Util.fmt(spend, 2) + '</b> 元 / 预算 ' + Util.fmt(budget, 2) + ' 元（' + Util.fmt(pct, 0) + '%）' +
+          (pct > 100 ? '，<span>已超支 ' + Util.fmt(spend - budget, 2) + ' 元</span>' : '，剩余 ' + Util.fmt(budget - spend, 2) + ' 元');
+      } else {
+        budgetEl.textContent = '';
+      }
+    }
   }
 
   /* ---------- 电池健康 ---------- */
@@ -626,6 +650,7 @@
     f.chargerEfficiency.value = s.chargerEfficiency;
     f.defaultPrice.value = s.defaultPrice;
     f.unit.value = s.unit;
+    f.monthlyBudget.value = s.monthlyBudget || '';
     const dl = $('#auto-download');
     if (dl) dl.checked = !!state.autoDownload;
     const ver = $('#app-version');
@@ -643,6 +668,7 @@
     s.chargerEfficiency = Util.toNum(f.chargerEfficiency.value) || 0.88;
     s.defaultPrice = Util.toNum(f.defaultPrice.value) || 0;
     s.unit = f.unit.value;
+    s.monthlyBudget = Util.toNum(f.monthlyBudget.value) || 0;
     save();
     renderAll();
     toast('设置已保存');
@@ -746,6 +772,7 @@
 
     /* 记费用 */
     $('#btn-add-expense').addEventListener('click', function () { openExpenseForm(null); });
+    $('#btn-month-report').addEventListener('click', exportMonthReport);
     $('#expense-quick').addEventListener('click', function (ev) {
       const b = ev.target.closest('button[data-type]');
       if (!b) return;
@@ -920,6 +947,82 @@
       source: 'node-red'
     };
   }
+  function loadHassStatus() {
+    try { return JSON.parse(localStorage.getItem('energy-tracker.hastatus') || 'null'); } catch (e) { return null; }
+  }
+  async function refreshHassStatus(url) {
+    try {
+      const u = new URL(url);
+      u.pathname = '/api/status';
+      const res = await fetch(u.toString());
+      if (!res.ok) return;
+      const st = await res.json();
+      if (st && st.soc != null) {
+        localStorage.setItem('energy-tracker.hastatus', JSON.stringify({ soc: Number(st.soc), mileage: st.mileage != null ? Number(st.mileage) : null, time: Date.now() }));
+      }
+    } catch (e) {}
+  }
+  function mergeNodeRedRecords(arr) {
+    const v = currentVehicle();
+    const ids = {};
+    v.records.forEach(function (r) { if (r.id) ids[r.id] = true; });
+    let added = 0, skipped = 0;
+    arr.forEach(function (r) {
+      if (!r || typeof r !== 'object') return;
+      if (!r.id) r.id = Util.uid();
+      if (ids[r.id]) { skipped++; return; }
+      v.records.push(normalizeNodeRedRecord(r));
+      ids[r.id] = true;
+      added++;
+    });
+    return { added: added, skipped: skipped };
+  }
+  async function autoSyncOnOpen() {
+    const url = ($('#sync-url').value || '').trim();
+    if (!url) return;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const arr = await res.json();
+      if (!Array.isArray(arr)) return;
+      const r = mergeNodeRedRecords(arr);
+      if (r.added) {
+        save();
+        saveSyncInfo({ url: url, lastSync: new Date().toISOString(), lastCount: arr.length });
+        renderAll();
+        toast('自动同步：新增 ' + r.added + ' 条记录');
+      }
+      refreshHassStatus(url);
+    } catch (e) {}
+  }
+  function exportMonthReport() {
+    const now = new Date();
+    const mon = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    const v = currentVehicle();
+    const charges = v.records.filter(function (r) { return r.kind !== 'expense' && String(r.date || '').slice(0, 7) === mon; });
+    const exps = v.records.filter(function (r) { return r.kind === 'expense' && String(r.date || '').slice(0, 7) === mon; });
+    const kwh = charges.reduce(function (s, r) { return s + (r.energyKwh || 0); }, 0);
+    const ccost = charges.reduce(function (s, r) { return s + (r.cost || 0); }, 0);
+    const ecost = exps.reduce(function (s, r) { return s + (r.cost || 0); }, 0);
+    const ms = charges.map(function (r) { return r.mileage; }).filter(function (m) { return m != null; });
+    let km = null;
+    if (ms.length >= 2) km = Math.max.apply(null, ms) - Math.min.apply(null, ms);
+    const lines = [];
+    lines.push('电耗记账 · 月度报告 ' + mon);
+    lines.push('车辆：' + v.settings.vehicleName);
+    lines.push('');
+    lines.push('充电次数：' + charges.length + ' 次');
+    lines.push('充电度数：' + Util.fmt(kwh, 2) + ' kWh');
+    lines.push('充电费用：' + Util.fmt(ccost, 2) + ' 元');
+    if (kwh > 0) lines.push('平均电价：' + Util.fmt(ccost / kwh, 3) + ' 元/度');
+    if (km != null) lines.push('本月行驶里程（近似）：' + Util.fmt(km, 0) + ' km');
+    if (km != null && kwh > 0) lines.push('平均电耗（墙端）：' + Util.fmt(kwh * 1000 / km, 1) + ' Wh/km');
+    lines.push('');
+    lines.push('其他费用：' + exps.length + ' 笔，共 ' + Util.fmt(ecost, 2) + ' 元');
+    lines.push('本月总支出：' + Util.fmt(ccost + ecost, 2) + ' 元');
+    Util.download('月度报告-' + mon + '.txt', lines.join('\n'), 'text/plain;charset=utf-8');
+    toast('月度报告已导出');
+  }
   async function syncNodeRed() {
     const url = ($('#sync-url').value || '').trim();
     const statusEl = $('#sync-status');
@@ -930,21 +1033,12 @@
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const arr = await res.json();
       if (!Array.isArray(arr)) throw new Error('返回格式不是数组');
-      const v = currentVehicle();
-      const ids = {};
-      v.records.forEach(function (r) { if (r.id) ids[r.id] = true; });
-      let added = 0, skipped = 0;
-      arr.forEach(function (r) {
-        if (!r || typeof r !== 'object') return;
-        if (!r.id) r.id = Util.uid();
-        if (ids[r.id]) { skipped++; return; }
-        v.records.push(normalizeNodeRedRecord(r));
-        ids[r.id] = true;
-        added++;
-      });
+      const merged = mergeNodeRedRecords(arr);
+      const added = merged.added, skipped = merged.skipped;
       save();
       saveSyncInfo({ url: url, lastSync: new Date().toISOString(), lastCount: arr.length });
       renderAll();
+      refreshHassStatus(url);
       statusEl.textContent = '同步完成：新增 ' + added + ' 条' + (skipped ? '，跳过 ' + skipped + ' 条重复' : '') + '（接口共 ' + arr.length + ' 条）';
       toast(added ? '已同步 ' + added + ' 条新记录' : '没有新记录');
     } catch (e) {
@@ -969,6 +1063,9 @@
       let text = '连接正常：已有记录 ' + (st.count || 0) + ' 条';
       if (st.pending) text += '，挂起换电（充电前 ' + st.pending.soc_before + '%）';
       if (st.session && st.session.active) text += '，正在充电';
+      if (st.soc != null) {
+        localStorage.setItem('energy-tracker.hastatus', JSON.stringify({ soc: Number(st.soc), mileage: st.mileage != null ? Number(st.mileage) : null, time: Date.now() }));
+      }
       statusEl.textContent = text;
       toast('Node-RED 连接正常');
     } catch (e) {
@@ -1045,5 +1142,6 @@
   bindSyncEvents();
   renderAll();
   ensureDailyBackup(false);
+  autoSyncOnOpen();
   setInterval(function () { ensureDailyBackup(false); }, 60 * 60 * 1000);
 })();

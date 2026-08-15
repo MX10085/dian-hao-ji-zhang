@@ -4,7 +4,7 @@
     "type": "tab",
     "label": "电耗记账 · 自动记录",
     "disabled": false,
-    "info": "AE6 两电池交替充电自动记录：\n1. 电量跳变≥90% → 换电，存充电前电量+里程\n2. 插座>8W 开始会话，读累计电量表存起始值；<8W 持续2分钟结束\n3. 结束读累计电量表差值算度数（回退功率积分）\n4. <0.5kWh 视为插座他用，忽略且保留挂起数据\n5. 正常结束生成记录追加 records.jsonl；GET /api/records 供 app 同步",
+    "info": "AE6 两电池交替充电自动记录：\n1. 电量跳变≥90% → 换电：回填上条记录实际充后电量、存挂起数据、发通知\n2. 插座>8W 开始会话（读累计电量起始值），<8W 持续2分钟结束\n3. 结束读数差值算度数（回退功率积分）\n4. <0.5kWh 视为插座他用，忽略且保留挂起数据\n5. 正常结束生成记录 + 通知\n6. GET /api/records、/api/status（含电量/里程）、POST /api/backup",
     "env": []
   },
   {
@@ -78,8 +78,8 @@
     "type": "function",
     "z": "el-tab",
     "name": "换电判定",
-    "func": "const newS = Number(msg.payload);\nconst oldS = msg.data && msg.data.old_state ? Number(msg.data.old_state.state) : NaN;\nif (isNaN(oldS) || isNaN(newS)) return null;\nif (newS >= 90 && oldS < 90) {\n  flow.set('swapSocBefore', oldS);\n  return msg;\n}\nreturn null;",
-    "outputs": 1,
+    "func": "const newS = Number(msg.payload);\nconst oldS = msg.data && msg.data.old_state ? Number(msg.data.old_state.state) : NaN;\n  if (!isNaN(newS)) flow.set('curSoc', newS);\nif (isNaN(oldS) || isNaN(newS)) return null;\nif (newS >= 90 && oldS < 90) {\n  flow.set('swapSocBefore', oldS);\n  /* 回填：最近一条 node-red 记录的实际充后电量 */\n  try {\n    const fsx = global.get('fs');\n    const dir = '/data/electric-log';\n    const file = dir + '/records.jsonl';\n    const lines = fsx.readFileSync(file, 'utf8').split('\\n').filter(Boolean);\n    if (lines.length) {\n      const last = JSON.parse(lines[lines.length - 1]);\n      const lastDate = Date.parse(last.date || '');\n      if (lastDate && Date.now() - lastDate < 3 * 86400000 && last.socEnd === 100 && last.source === 'node-red') {\n        last.socEnd = newS;\n        last.full = newS >= 90;\n        last.note = (last.note ? last.note + '；' : '') + '回填实际充后电量' + newS + '%';\n        lines[lines.length - 1] = JSON.stringify(last);\n        fsx.writeFileSync(file, lines.join('\\n') + '\\n');\n      }\n    }\n  } catch (e) {}\n  return [msg, { payload: { soc: oldS } }];\n}\nreturn null;",
+    "outputs": 2,
     "timeout": 0,
     "noerr": 0,
     "initialize": "",
@@ -90,6 +90,9 @@
     "wires": [
       [
         "el-get-mile"
+      ],
+      [
+        "el-notify-swap"
       ]
     ]
   },
@@ -257,7 +260,8 @@
     "y": 360,
     "wires": [
       [
-        "el-get-en-start"
+        "el-get-en-start",
+        "el-notify-start"
       ],
       [
         "el-delay"
@@ -359,8 +363,8 @@
     "type": "function",
     "z": "el-tab",
     "name": "生成充电记录",
-    "func": "const fs = global.get('fs');\nconst dir = '/data/electric-log';\nconst PRICE = 0.65;\nconst LOW_KWH = 0.5;\nconst ENERGY_SCALE = 1; // kWh=1；Wh=0.001\nlet s = null;\ntry { s = JSON.parse(fs.readFileSync(dir + '/charging_session.json', 'utf8')); } catch (e) {}\nlet kwh = null;\nif (s && s.energy_start != null) {\n  const endVal = Number(msg.payload) * ENERGY_SCALE;\n  if (!isNaN(endVal) && endVal >= s.energy_start) kwh = endVal - s.energy_start;\n}\nif (kwh == null && msg.charge && msg.charge.kwh != null) kwh = msg.charge.kwh; // 回退：功率积分\nif (kwh == null) kwh = 0;\nkwh = Math.round(kwh * 1000) / 1000;\nif (kwh < LOW_KWH) {\n  try { fs.unlinkSync(dir + '/charging_session.json'); } catch (e) {}\n  node.status({ text: '忽略: ' + kwh + ' kWh < 0.5，疑似插座他用', fill: 'yellow' });\n  return null;\n}\nlet pending = null;\ntry { pending = JSON.parse(fs.readFileSync(dir + '/pending_swap.json', 'utf8')); } catch (e) {}\nconst now = new Date();\nconst pad = n => String(n).padStart(2, '0');\nconst rec = {\n  id: 'nr-' + Date.now(),\n  date: now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()),\n  time: pad(now.getHours()) + ':' + pad(now.getMinutes()),\n  mileage: pending && pending.mileage != null ? pending.mileage : null,\n  socStart: pending ? pending.soc_before : null,\n  socEnd: 100,\n  energyKwh: kwh,\n  cost: Math.round(kwh * PRICE * 100) / 100,\n  price: PRICE,\n  full: true,\n  type: '家充',\n  battery: '未知',\n  note: pending ? '' : '未检测到换电',\n  source: 'node-red'\n};\ntry { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}\nfs.appendFileSync(dir + '/records.jsonl', JSON.stringify(rec) + String.fromCharCode(10));\ntry { fs.unlinkSync(dir + '/pending_swap.json'); } catch (e) {}\ntry { fs.unlinkSync(dir + '/charging_session.json'); } catch (e) {}\nnode.status({ text: '已记录 ' + rec.energyKwh + ' kWh @ ' + rec.date, fill: 'green' });\nmsg.payload = rec;\nreturn msg;",
-    "outputs": 1,
+    "func": "const fs = global.get('fs');\nconst dir = '/data/electric-log';\nconst PRICE = 0.65;\nconst LOW_KWH = 0.5;\nconst ENERGY_SCALE = 1; // kWh=1；Wh=0.001\nlet s = null;\ntry { s = JSON.parse(fs.readFileSync(dir + '/charging_session.json', 'utf8')); } catch (e) {}\nlet kwh = null;\nif (s && s.energy_start != null) {\n  const endVal = Number(msg.payload) * ENERGY_SCALE;\n  if (!isNaN(endVal) && endVal >= s.energy_start) kwh = endVal - s.energy_start;\n}\nif (kwh == null && msg.charge && msg.charge.kwh != null) kwh = msg.charge.kwh; // 回退：功率积分\nif (kwh == null) kwh = 0;\nkwh = Math.round(kwh * 1000) / 1000;\nif (kwh < LOW_KWH) {\n  try { fs.unlinkSync(dir + '/charging_session.json'); } catch (e) {}\n  node.status({ text: '忽略: ' + kwh + ' kWh < 0.5，疑似插座他用', fill: 'yellow' });\n  return [null, { payload: { type: 'ignore', kwh: kwh } }];\n}\nlet pending = null;\ntry { pending = JSON.parse(fs.readFileSync(dir + '/pending_swap.json', 'utf8')); } catch (e) {}\nconst now = new Date();\nconst pad = n => String(n).padStart(2, '0');\nconst rec = {\n  id: 'nr-' + Date.now(),\n  date: now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()),\n  time: pad(now.getHours()) + ':' + pad(now.getMinutes()),\n  mileage: pending && pending.mileage != null ? pending.mileage : null,\n  socStart: pending ? pending.soc_before : null,\n  socEnd: 100,\n  energyKwh: kwh,\n  cost: Math.round(kwh * PRICE * 100) / 100,\n  price: PRICE,\n  full: true,\n  type: '家充',\n  battery: '未知',\n  note: pending ? '' : '未检测到换电',\n  source: 'node-red'\n};\ntry { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}\nfs.appendFileSync(dir + '/records.jsonl', JSON.stringify(rec) + String.fromCharCode(10));\ntry { fs.unlinkSync(dir + '/pending_swap.json'); } catch (e) {}\ntry { fs.unlinkSync(dir + '/charging_session.json'); } catch (e) {}\nnode.status({ text: '已记录 ' + rec.energyKwh + ' kWh @ ' + rec.date, fill: 'green' });\nmsg.payload = rec;\nreturn msg;",
+    "outputs": 2,
     "timeout": 0,
     "noerr": 0,
     "initialize": "",
@@ -371,6 +375,9 @@
     "wires": [
       [
         "el-dbg-final"
+      ],
+      [
+        "el-fn-notify-fin"
       ]
     ]
   },
@@ -469,7 +476,7 @@
     "type": "function",
     "z": "el-tab",
     "name": "读取状态",
-    "func": "const TOKEN = '改成你的令牌';\nif (!msg.req || !msg.req.query || msg.req.query.token !== TOKEN) {\n  msg.statusCode = 403;\n  msg.payload = { error: 'forbidden' };\n  msg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };\n  return msg;\n}\nconst fs = global.get('fs');\nconst dir = '/data/electric-log';\nconst out = { pending: null, session: null, last: null, count: 0 };\ntry { out.pending = JSON.parse(fs.readFileSync(dir + '/pending_swap.json', 'utf8')); } catch (e) {}\ntry { out.session = JSON.parse(fs.readFileSync(dir + '/charging_session.json', 'utf8')); } catch (e) {}\ntry {\n  const lines = fs.readFileSync(dir + '/records.jsonl', 'utf8').split('\\n').filter(Boolean);\n  out.count = lines.length;\n  if (lines.length) {\n    try { out.last = JSON.parse(lines[lines.length - 1]); } catch (e) {}\n  }\n} catch (e) {}\nmsg.payload = out;\nmsg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };\nreturn msg;",
+    "func": "const TOKEN = '改成你的令牌';\nif (!msg.req || !msg.req.query || msg.req.query.token !== TOKEN) {\n  msg.statusCode = 403;\n  msg.payload = { error: 'forbidden' };\n  msg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };\n  return msg;\n}\nconst fs = global.get('fs');\nconst dir = '/data/electric-log';\nconst out = { pending: null, session: null, last: null, count: 0 };\ntry { out.pending = JSON.parse(fs.readFileSync(dir + '/pending_swap.json', 'utf8')); } catch (e) {}\ntry { out.session = JSON.parse(fs.readFileSync(dir + '/charging_session.json', 'utf8')); } catch (e) {}\ntry {\n  const lines = fs.readFileSync(dir + '/records.jsonl', 'utf8').split('\\n').filter(Boolean);\n  out.count = lines.length;\n  if (lines.length) {\n    try { out.last = JSON.parse(lines[lines.length - 1]); } catch (e) {}\n  }\n} catch (e) {}\nconst tmpSoc = flow.get('curSoc');\nout.soc = tmpSoc != null && tmpSoc !== '' ? Number(tmpSoc) : null;\nout.mileage = flow.get('curMile') != null && flow.get('curMile') !== '' ? Number(flow.get('curMile')) : null;\nmsg.payload = out;\nmsg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };\nreturn msg;",
     "outputs": 1,
     "timeout": 0,
     "noerr": 0,
@@ -650,5 +657,182 @@
     "x": 580,
     "y": 700,
     "wires": []
+  },
+  {
+    "id": "el-notify-swap",
+    "type": "api-call-service",
+    "z": "el-tab",
+    "name": "通知-换电",
+    "server": "",
+    "version": 7,
+    "debugenabled": false,
+    "action": "notify.persistent_notification",
+    "floorId": [],
+    "areaId": [],
+    "deviceId": [],
+    "entityId": [],
+    "labelId": [],
+    "data": "{\"title\":\"电耗记账\",\"message\":\"检测到换电：充电前 {{payload.soc}}%\"}",
+    "dataType": "json",
+    "mergeContext": "",
+    "mustacheAltTags": false,
+    "outputProperties": [],
+    "queue": "none",
+    "blockInputOverrides": false,
+    "x": 900,
+    "y": 140,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "el-notify-start",
+    "type": "api-call-service",
+    "z": "el-tab",
+    "name": "通知-开始充电",
+    "server": "",
+    "version": 7,
+    "debugenabled": false,
+    "action": "notify.persistent_notification",
+    "floorId": [],
+    "areaId": [],
+    "deviceId": [],
+    "entityId": [],
+    "labelId": [],
+    "data": "{\"title\":\"电耗记账\",\"message\":\"插座开始充电\"}",
+    "dataType": "json",
+    "mergeContext": "",
+    "mustacheAltTags": false,
+    "outputProperties": [],
+    "queue": "none",
+    "blockInputOverrides": false,
+    "x": 900,
+    "y": 300,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "el-fn-notify-fin",
+    "type": "function",
+    "z": "el-tab",
+    "name": "通知内容",
+    "func": "if (msg.payload && msg.payload.type === 'ignore') {\n  msg.payload = { title: '电耗记账', message: '本次充电仅 ' + msg.payload.kwh + ' kWh，疑似插座他用，已忽略' };\n} else if (msg.payload && msg.payload.energyKwh != null) {\n  msg.payload = { title: '电耗记账', message: '充电完成：' + msg.payload.energyKwh + ' kWh，费用 ' + msg.payload.cost + ' 元' };\n} else {\n  msg.payload = { title: '电耗记账', message: '充电完成' };\n}\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1100,
+    "y": 500,
+    "wires": [
+      "el-notify-fin"
+    ]
+  },
+  {
+    "id": "el-notify-fin",
+    "type": "api-call-service",
+    "z": "el-tab",
+    "name": "通知-充电结果",
+    "server": "",
+    "version": 7,
+    "debugenabled": false,
+    "action": "notify.persistent_notification",
+    "floorId": [],
+    "areaId": [],
+    "deviceId": [],
+    "entityId": [],
+    "labelId": [],
+    "data": "{\"title\":\"{{payload.title}}\",\"message\":\"{{payload.message}}\"}",
+    "dataType": "json",
+    "mergeContext": "",
+    "mustacheAltTags": false,
+    "outputProperties": [],
+    "queue": "none",
+    "blockInputOverrides": false,
+    "x": 1300,
+    "y": 500,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "el-evt-mile-cache",
+    "type": "server-state-changed",
+    "z": "el-tab",
+    "name": "里程缓存",
+    "server": "",
+    "version": 6,
+    "outputs": 1,
+    "exposeAsEntityConfig": "",
+    "entities": {
+      "entity": [
+        "sensor.total_odometer"
+      ],
+      "substring": [],
+      "regex": []
+    },
+    "outputInitially": false,
+    "stateType": "str",
+    "ifState": "",
+    "ifStateType": "str",
+    "ifStateOperator": "is",
+    "outputOnlyOnStateChange": true,
+    "for": "0",
+    "forType": "num",
+    "forUnits": "minutes",
+    "ignorePrevStateNull": false,
+    "ignorePrevStateUnknown": false,
+    "ignorePrevStateUnavailable": false,
+    "ignoreCurrentStateUnknown": false,
+    "ignoreCurrentStateUnavailable": false,
+    "outputProperties": [
+      {
+        "property": "payload",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "entityState"
+      },
+      {
+        "property": "data",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "eventData"
+      },
+      {
+        "property": "topic",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "triggerId"
+      }
+    ],
+    "x": 120,
+    "y": 900,
+    "wires": [
+      [
+        "el-fn-mile-cache"
+      ]
+    ]
+  },
+  {
+    "id": "el-fn-mile-cache",
+    "type": "function",
+    "z": "el-tab",
+    "name": "缓存里程",
+    "func": "const v = Number(msg.payload);\nif (!isNaN(v)) flow.set('curMile', v);\nreturn null;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 300,
+    "y": 900,
+    "wires": [
+      [
+        ""
+      ]
+    ]
   }
 ]

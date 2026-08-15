@@ -70,6 +70,7 @@
   <section id="tab-expenses" class="tab">
     <div class="toolbar">
       <button id="btn-add-expense" class="btn primary" type="button">＋ 记费用</button>
+      <button id="btn-month-report" class="btn" type="button">导出本月报告</button>
       <span id="expense-count" class="muted"></span>
     </div>
     <div id="expense-list" class="record-list"></div>
@@ -81,6 +82,7 @@
     <div class="panel">
       <h2>月度支出统计</h2>
       <div id="chart-monthly" class="chart"></div>
+      <p id="budget-info" class="budget-info"></p>
     </div>
     <div class="panel">
       <h2>费用构成</h2>
@@ -129,6 +131,10 @@
       </label>
       <label>默认电价（元/度）
         <input name="defaultPrice" type="number" step="any" min="0" />
+      </label>
+      <label>月度充电预算（元）
+        <input name="monthlyBudget" type="number" step="any" min="0" />
+        <small>费用页显示本月支出与预算对比</small>
       </label>
       <label>电耗单位
         <select name="unit">

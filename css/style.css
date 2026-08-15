@@ -10,6 +10,9 @@
   --danger: #ff5d5d;
   --ok: #3ecf8e;
   --radius: 14px;
+  --topbar-bg: rgba(16, 20, 31, 0.92);
+  --tabbar-bg: rgba(16, 20, 31, 0.96);
+  --tooltip-bg: rgba(20, 28, 44, 0.96);
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
@@ -34,7 +37,7 @@ button { font-family: inherit; }
   padding-top: calc(12px + env(safe-area-inset-top));
   padding-left: calc(16px + env(safe-area-inset-left));
   padding-right: calc(16px + env(safe-area-inset-right));
-  background: rgba(16, 20, 31, 0.92);
+  background: var(--topbar-bg);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--line);
 }
@@ -152,7 +155,7 @@ main { max-width: 720px; margin: 0 auto; padding: 14px 14px 92px; }
   position: absolute;
   pointer-events: none;
   z-index: 6;
-  background: rgba(20, 28, 44, 0.96);
+  background: var(--tooltip-bg);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 6px 9px;
@@ -271,7 +274,7 @@ main { max-width: 720px; margin: 0 auto; padding: 14px 14px 92px; }
 #tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
   display: flex;
-  background: rgba(16, 20, 31, 0.96);
+  background: var(--tabbar-bg);
   backdrop-filter: blur(10px);
   border-top: 1px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom);
@@ -360,4 +363,27 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
   padding: 9px 11px;
   font-size: 15px;
   margin-top: 4px;
+}
+
+/* 预算显示 */
+.budget-info { margin-top: 10px; font-size: 13px; color: var(--muted); }
+.budget-info b { color: var(--text); }
+.budget-info.over { color: var(--danger); }
+.budget-info.over b { color: var(--danger); }
+
+/* 浅色模式：跟随系统 */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f2f5f9;
+    --panel: #ffffff;
+    --panel2: #eef1f6;
+    --line: #d9e0ea;
+    --text: #1b2433;
+    --muted: #5c6a80;
+    --accent: #2b8ec9;
+    --accent2: #2b8ec9;
+    --topbar-bg: rgba(255, 255, 255, 0.92);
+    --tabbar-bg: rgba(255, 255, 255, 0.96);
+    --tooltip-bg: rgba(255, 255, 255, 0.97);
+  }
 }
