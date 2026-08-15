@@ -390,7 +390,7 @@
     $('#f-time').value = rec ? (rec.time || '') : Util.nowTimeStr();
     $('#f-mileage').value = rec && rec.mileage != null ? rec.mileage : '';
     $('#f-socStart').value = rec && rec.socStart != null ? rec.socStart : '';
-    $('#f-socEnd').value = rec && rec.socEnd != null ? rec.socEnd : '';
+    $('#f-socEnd').value = rec && rec.socEnd != null ? rec.socEnd : (rec ? '' : 100);
     $('#f-energy').value = rec && rec.energyKwh != null ? rec.energyKwh : '';
     $('#f-price').value = rec && rec.price != null ? rec.price : (rec ? '' : v.settings.defaultPrice);
     $('#f-cost').value = rec && rec.cost != null ? rec.cost : '';
