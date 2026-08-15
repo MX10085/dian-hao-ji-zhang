@@ -1016,7 +1016,7 @@
     lines.push('充电费用：' + Util.fmt(ccost, 2) + ' 元');
     if (kwh > 0) lines.push('平均电价：' + Util.fmt(ccost / kwh, 3) + ' 元/度');
     if (km != null) lines.push('本月行驶里程（近似）：' + Util.fmt(km, 0) + ' km');
-    if (km != null && kwh > 0) lines.push('平均电耗（墙端）：' + Util.fmt(kwh * 1000 / km, 1) + ' Wh/km');
+    if (km != null && kwh > 0) lines.push('平均电耗：' + Util.fmt(kwh * 1000 / km, 1) + ' Wh/km');
     lines.push('');
     lines.push('其他费用：' + exps.length + ' 笔，共 ' + Util.fmt(ecost, 2) + ' 元');
     lines.push('本月总支出：' + Util.fmt(ccost + ecost, 2) + ' 元');
