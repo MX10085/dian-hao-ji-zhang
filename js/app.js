@@ -213,7 +213,7 @@
     const hsFresh = hs && (Date.now() - hs.time) < 2 * 3600 * 1000;
     const curMile = hsFresh && hs.mileage != null ? hs.mileage : s.lastMileage;
     const curSoc = hsFresh && hs.soc != null ? hs.soc : null;
-    const estKm = curSoc != null && s.avgWhPerKm ? (v.settings.batteryCapacityWh * curSoc / 100) / s.avgWhPerKm : null;
+    const estKm = hsFresh && hs.range != null ? hs.range : (curSoc != null && s.avgWhPerKm ? (v.settings.batteryCapacityWh * curSoc / 100) / s.avgWhPerKm : null);
     $('#stats').innerHTML =
       statCard('爱车相伴', days != null ? days : '—', '天', days != null) +
       statCard('总里程(表显)', Util.fmt(curMile, 1), 'km', true) +
@@ -958,7 +958,7 @@
       if (!res.ok) return;
       const st = await res.json();
       if (st && st.soc != null) {
-        localStorage.setItem('energy-tracker.hastatus', JSON.stringify({ soc: Number(st.soc), mileage: st.mileage != null ? Number(st.mileage) : null, time: Date.now() }));
+        localStorage.setItem('energy-tracker.hastatus', JSON.stringify({ soc: Number(st.soc), mileage: st.mileage != null ? Number(st.mileage) : null, range: st.range != null ? Number(st.range) : null, time: Date.now() }));
       }
     } catch (e) {}
   }
@@ -1064,7 +1064,7 @@
       if (st.pending) text += '，挂起换电（充电前 ' + st.pending.soc_before + '%）';
       if (st.session && st.session.active) text += '，正在充电';
       if (st.soc != null) {
-        localStorage.setItem('energy-tracker.hastatus', JSON.stringify({ soc: Number(st.soc), mileage: st.mileage != null ? Number(st.mileage) : null, time: Date.now() }));
+        localStorage.setItem('energy-tracker.hastatus', JSON.stringify({ soc: Number(st.soc), mileage: st.mileage != null ? Number(st.mileage) : null, range: st.range != null ? Number(st.range) : null, time: Date.now() }));
       }
       statusEl.textContent = text;
       toast('Node-RED 连接正常');
