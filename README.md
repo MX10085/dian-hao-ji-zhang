@@ -52,6 +52,8 @@
 
 两电池交替使用时，可让 Home Assistant + Node-RED 自动记录每一次充电，app 一键同步。流程文件在仓库 `node-red/electric-log-flow.json`。
 
+<img src="node-red/electric-log-flow.png" alt="Node-RED 自动记录流程" width="720">
+
 ### 使用步骤
 
 1. **导入流程**：Node-RED 菜单 → 导入 → 选择 `node-red/electric-log-flow.json` → 部署；
