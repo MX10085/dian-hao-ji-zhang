@@ -48,6 +48,42 @@
 
 **PWA**：用手机浏览器打开后可「添加到主屏幕」，像 APP 一样用，离线可用。
 
+## Home Assistant / Node-RED 自动记录
+
+两电池交替使用时，可让 Home Assistant + Node-RED 自动记录每一次充电，app 一键同步。
+
+### 数据来源（HA 实体）
+
+| 实体 | 用途 |
+| --- | --- |
+| `sensor.zeeho_ae6_dian_liang` | 车上电量，从 <90% 跳到 ≥90% 判定换电 |
+| `sensor.yi_lou_ru_hu_zeeho_ae6_zong_li_cheng` | 总里程，换电时记录 |
+| `sensor.0x00158d000926d0fa_power` | 插座功率（W），>8W 开始会话、<8W 持续 2 分钟结束 |
+| `sensor.0x00158d000926d0fa_energy` | 插座累计电量（kWh），会话起止读数差值算度数 |
+
+### 工作流程
+
+1. 电量从 <90% 跳到 ≥90% → 判定新电池装车，把跳变前电量与总里程存入挂起文件；
+2. 插座功率 >8W 开始充电会话（记录累计电量起始值），<8W 持续 2 分钟确认结束；
+3. 结束读数 − 开始读数 = 本次充电度数（读数异常时回退到功率积分）；
+4. 充电电量 <0.5 kWh 视为插座用于其他设备，忽略并保留挂起数据；
+5. 正常结束生成一条记录追加到 `records.jsonl`，同时删除挂起数据。
+
+### 文件与接口
+
+- 数据目录（容器内）：`/data/electric-log/`（NAS 上为 `/share/Container/node-red/electric-log/`）
+  - `pending_swap.json`：挂起换电数据（防 Node-RED 重启丢失）
+  - `charging_session.json`：进行中的充电会话
+  - `records.jsonl`：最终记录（一行一条 JSON）
+- HTTP 接口（Node-RED 内置）：`GET /api/records`、`GET /api/status`
+- 公网反代（Nginx Proxy Manager）：`https://hass.cloud.link.me:1443/api/records`、`/api/status`
+
+### app 同步
+
+设置页「Node-RED 自动记录同步」：接口地址默认公网反代地址，点「检查连接」可看挂起/充电状态，点「同步记录」按 id 去重合并进当前车辆。
+
+> 注意：Node-RED v4 函数节点默认没有 `require`，需在 `settings.js` 的 `functionGlobalContext` 加入 `fs: require('fs')`，流程函数内用 `global.get('fs')` 读取，否则接口会挂起。
+
 ## 怎么运行
 
 ### 方式一：直接打开
