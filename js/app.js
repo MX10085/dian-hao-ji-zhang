@@ -982,9 +982,12 @@
     });
     return { added: added, skipped: skipped };
   }
+  let autoSyncBusy = false;
   async function autoSyncOnOpen() {
+    if (autoSyncBusy) return;
     const url = ($('#sync-url').value || '').trim();
     if (!url) return;
+    autoSyncBusy = true;
     try {
       const res = await fetch(url);
       if (!res.ok) return;
@@ -999,6 +1002,7 @@
       }
       refreshHassStatus(url);
     } catch (e) {}
+    autoSyncBusy = false;
   }
   function exportMonthReport() {
     const now = new Date();
@@ -1148,5 +1152,7 @@
   renderAll();
   ensureDailyBackup(false);
   autoSyncOnOpen();
+  setInterval(function () { autoSyncOnOpen(); }, 5 * 60 * 1000);
+  window.addEventListener('focus', function () { autoSyncOnOpen(); });
   setInterval(function () { ensureDailyBackup(false); }, 60 * 60 * 1000);
 })();
