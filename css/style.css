@@ -306,7 +306,7 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
   padding: 9px 11px; font-size: 15px;
 }
 .dialog-body small { display: block; color: var(--muted); margin-top: 3px; font-size: 12px; }
-.dialog-body .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dialog-body .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .dialog-body .check { display: flex; align-items: center; gap: 8px; color: var(--text); }
 .dialog-body .check input { width: auto; margin: 0; }
 .dialog-actions { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
@@ -386,4 +386,14 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
     --tabbar-bg: rgba(255, 255, 255, 0.96);
     --tooltip-bg: rgba(255, 255, 255, 0.97);
   }
+}
+
+/* 记一笔弹窗：日期/时间原生控件宽度约束 */
+.dialog-body input[type="date"],
+.dialog-body input[type="time"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
 }
