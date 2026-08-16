@@ -212,12 +212,10 @@
     const hs = loadHassStatus();
     const hsFresh = hs && (Date.now() - hs.time) < 2 * 3600 * 1000;
     const curMile = hsFresh && hs.mileage != null ? hs.mileage : s.lastMileage;
-    const curSoc = hsFresh && hs.soc != null ? hs.soc : null;
-    const estKm = hsFresh && hs.range != null ? hs.range : (curSoc != null && s.avgWhPerKm ? (v.settings.batteryCapacityWh * curSoc / 100) / s.avgWhPerKm : null);
     $('#stats').innerHTML =
       statCard('爱车相伴', days != null ? days : '—', '天', days != null) +
       statCard('总里程(表显)', Util.fmt(curMile, 1), 'km', true) +
-      statCard('预计续航', estKm != null ? Util.fmt(estKm, 0) : '—', 'km', estKm != null) +
+      statCard('本月充电花费', Util.fmt(s.thisMonthCost, 2), '元', s.thisMonthCost > 0) +
       statCard('累计充电', Util.fmt(s.totalWallKwh, 2), 'kWh', true) +
 
       statCard('平均电耗', fmtEff(s.avgWallWhPerKm), unitLabel(), true) +
