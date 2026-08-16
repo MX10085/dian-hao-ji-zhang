@@ -159,7 +159,7 @@
       return '<div class="rec-row backup-row" data-idx="' + i + '">' +
         '<div class="rec-main">' +
         '<div class="rec-top"><span class="rec-date">' + Util.esc(b.date) + '</span></div>' +
-        '<div class="rec-sub">' + Util.esc(String(b.savedAt || '').replace('T', ' ').slice(0, 16)) + '</div></div>' +
+        '<div class="rec-sub">' + Util.esc(fmtLocalTime(b.savedAt)) + '</div></div>' +
         '<div class="rec-actions">' +
         '<button type="button" class="edit" data-act="restore" title="恢复">↩</button>' +
         '<button type="button" class="edit" data-act="export" title="导出">↓</button>' +
@@ -910,6 +910,13 @@
   /* ---------- Node-RED 自动记录同步 ---------- */
   const SYNC_KEY = 'energy-tracker.nodered';
 
+  function fmtLocalTime(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso).replace('T', ' ').slice(0, 16);
+    const pad = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
   function loadSyncInfo() {
     try { return JSON.parse(localStorage.getItem(SYNC_KEY) || '{}'); } catch (e) { return {}; }
   }
@@ -925,7 +932,7 @@
     if (!urlEl || !statusEl) return;
     const info = loadSyncInfo();
     urlEl.value = info.url || ''; // 隐私：不预填具体地址
-    statusEl.textContent = info.lastSync ? '上次同步：' + String(info.lastSync).replace('T', ' ').slice(0, 16) + '（接口共 ' + (info.lastCount || 0) + ' 条）' : '';
+    statusEl.textContent = info.lastSync ? '上次同步：' + fmtLocalTime(info.lastSync) + '（接口共 ' + (info.lastCount || 0) + ' 条）' : '';
   }
   function normalizeNodeRedRecord(r) {
     return {
@@ -1092,7 +1099,7 @@
     if (!el) return;
     try {
       const info = JSON.parse(localStorage.getItem('energy-tracker.nasbackup') || 'null');
-      el.textContent = info ? 'NAS 备份：' + String(info.time).replace('T', ' ').slice(0, 16) + (info.ok ? ' 成功' : ' 失败') : '';
+      el.textContent = info ? 'NAS 备份：' + fmtLocalTime(info.time) + (info.ok ? ' 成功' : ' 失败') : '';
     } catch (e) { el.textContent = ''; }
   }
   function caretScrollLeft(el, pos) {
