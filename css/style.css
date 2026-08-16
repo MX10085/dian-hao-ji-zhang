@@ -434,3 +434,10 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
   font-size: 14px;
   text-align: left;
 }
+
+/* iOS Safari：日期/时间 label 改回纵向（文字在上、输入框在下撑满） */
+.dialog-body .grid2 label {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
