@@ -441,3 +441,7 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
   align-items: stretch;
   gap: 4px;
 }
+
+/* 记录来源标记 */
+.badge.auto { color: var(--ok); border-color: rgba(62, 207, 142, .45); }
+.badge.man { color: var(--muted); border-color: var(--line); }
