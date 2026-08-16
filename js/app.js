@@ -274,7 +274,8 @@
     return '<div class="rec-row" data-id="' + Util.esc(rec.id) + '">' +
       '<div class="rec-main">' +
       '<div class="rec-top"><span class="rec-date">' + Util.esc(rec.date) + (rec.time ? ' ' + Util.esc(rec.time) : '') + '</span>' +
-      '<span class="badge">' + Util.esc(rec.type || '充电') + '</span></div>' +
+      '<span class="badge">' + Util.esc(rec.type || '充电') + '</span>' +
+      (rec.source === 'node-red' ? '<span class="badge auto">自动</span>' : '<span class="badge man">手动</span>') + '</div>' +
       '<div class="rec-sub">' + Util.esc(sub.join(' · ')) + '</div></div>' +
       '<div class="rec-nums">' +
       '<div class="num">' + Util.fmt(rec.energyKwh, 2) + ' <small>kWh</small></div>' +
