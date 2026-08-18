@@ -960,7 +960,7 @@
     try {
       const u = new URL(url);
       u.pathname = '/api/status';
-      const res = await fetch(u.toString());
+      const res = await fetch(u.toString(), { cache: 'no-store' });
       if (!res.ok) return;
       const st = await res.json();
       if (st && st.soc != null) {
@@ -990,7 +990,7 @@
     if (!url) return;
     autoSyncBusy = true;
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) return;
       const arr = await res.json();
       if (!Array.isArray(arr)) return;
@@ -1039,7 +1039,7 @@
     if (!url) { statusEl.textContent = '请先填写 Node-RED 接口地址'; return; }
     statusEl.textContent = '同步中…';
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const arr = await res.json();
       if (!Array.isArray(arr)) throw new Error('返回格式不是数组');
@@ -1067,7 +1067,7 @@
     } catch (e) {}
     statusEl.textContent = '检查中…';
     try {
-      const res = await fetch(base);
+      const res = await fetch(base, { cache: 'no-store' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const st = await res.json();
       let text = '连接正常：已有记录 ' + (st.count || 0) + ' 条';
