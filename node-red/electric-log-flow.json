@@ -11,7 +11,7 @@
     "id": "el-c1",
     "type": "comment",
     "name": "① 换电检测：电量跳变 ≥90%",
-    "info": "sensor.battery_level 从 <90% 跳到 ≥90%，判定新电池装车，把跳变前电量与当前总里程存入挂起文件",
+    "info": "sensor.zeeho_ae6_dian_liang 从 <90% 跳到 ≥90%，判定新电池装车，把跳变前电量与当前总里程存入挂起文件",
     "z": "el-tab",
     "wires": []
   },
@@ -20,13 +20,13 @@
     "type": "server-state-changed",
     "z": "el-tab",
     "name": "AE6 电量变化",
-    "server": "",
+    "server": "99c664b867ad2e30",
     "version": 6,
     "outputs": 1,
     "exposeAsEntityConfig": "",
     "entities": {
       "entity": [
-        "sensor.battery_level"
+        "sensor.zeeho_ae6_dian_liang"
       ],
       "substring": [],
       "regex": []
@@ -78,7 +78,7 @@
     "type": "function",
     "z": "el-tab",
     "name": "换电判定",
-    "func": "const newS = Number(msg.payload);\nconst oldS = msg.data && msg.data.old_state ? Number(msg.data.old_state.state) : NaN;\n  if (!isNaN(newS)) flow.set('curSoc', newS);\n  node.status({ text: '电量 ' + newS + '%', fill: 'green' });\nif (isNaN(oldS) || isNaN(newS)) return null;\nif (newS >= 90 && oldS < 90) {\n  flow.set('swapSocBefore', oldS);\n  node.status({ text: '换电 ' + oldS + '→' + newS + '%', fill: 'blue' });\n  /* 回填：最近一条 node-red 记录的实际充后电量 */\n  try {\n    const fsx = global.get('fs');\n    const dir = '/data/electric-log';\n    const file = dir + '/records.jsonl';\n    const lines = fsx.readFileSync(file, 'utf8').split('\\n').filter(Boolean);\n    if (lines.length) {\n      const last = JSON.parse(lines[lines.length - 1]);\n      const lastDate = Date.parse(last.date || '');\n      if (lastDate && Date.now() - lastDate < 3 * 86400000 && last.socEnd === 100 && last.source === 'node-red') {\n        last.socEnd = newS;\n        last.full = newS >= 90;\n        last.note = (last.note ? last.note + '；' : '') + '回填实际充后电量' + newS + '%';\n        lines[lines.length - 1] = JSON.stringify(last);\n        fsx.writeFileSync(file, lines.join('\\n') + '\\n');\n      }\n    }\n  } catch (e) {}\n  return [msg, { payload: { soc: oldS } }];\n}\nreturn null;",
+    "func": "const newS = Number(msg.payload);\nconst prevSoc = flow.get('prevSoc');\nconst oldS = msg.data && msg.data.old_state ? Number(msg.data.old_state.state) : (prevSoc != null ? Number(prevSoc) : NaN);\nif (!isNaN(newS)) {\n  flow.set('prevSoc', newS);\n  flow.set('curSoc', newS);\n  node.status({ text: '电量 ' + newS + '%', fill: 'green' });\n}\nif (isNaN(oldS) || isNaN(newS)) return null;\nif (newS >= 90 && oldS < 90) {\n  flow.set('swapSocBefore', oldS);\n  node.status({ text: '换电 ' + oldS + '→' + newS + '%', fill: 'blue' });\n  /* 回填：最近一条 node-red 记录的实际充后电量 */\n  try {\n    const fsx = global.get('fs');\n    const dir = '/data/electric-log';\n    const file = dir + '/records.jsonl';\n    const lines = fsx.readFileSync(file, 'utf8').split('\\n').filter(Boolean);\n    if (lines.length) {\n      const last = JSON.parse(lines[lines.length - 1]);\n      const lastDate = Date.parse(last.date || '');\n      if (lastDate && Date.now() - lastDate < 3 * 86400000 && last.socEnd === 100 && last.source === 'node-red') {\n        last.socEnd = newS;\n        last.full = newS >= 90;\n        last.note = (last.note ? last.note + '；' : '') + '回填实际充后电量' + newS + '%';\n        lines[lines.length - 1] = JSON.stringify(last);\n        fsx.writeFileSync(file, lines.join('\\n') + '\\n');\n      }\n    }\n  } catch (e) {}\n  return [msg, { payload: { soc: oldS } }];\n}\nreturn null;",
     "outputs": 2,
     "timeout": 0,
     "noerr": 0,
@@ -101,13 +101,13 @@
     "type": "api-current-state",
     "z": "el-tab",
     "name": "读总里程",
-    "server": "",
+    "server": "99c664b867ad2e30",
     "version": 3,
     "outputs": 1,
     "halt_if": "",
     "halt_if_type": "str",
     "halt_if_compare": "is",
-    "entity_id": "sensor.total_odometer",
+    "entity_id": "sensor.yi_lou_ru_hu_zeeho_ae6_zong_li_cheng",
     "state_type": "str",
     "blockInputOverrides": false,
     "outputProperties": [
@@ -183,7 +183,7 @@
     "type": "comment",
     "z": "el-tab",
     "name": "② 插座充电会话：功率积分",
-    "info": "sensor.charger_power >8W 开始，<8W 持续 2 分钟确认结束，积分得到墙端度数（会话状态写入文件防重启丢失）。功率单位默认 W，若实体是 kW 请把 WATT_SCALE 改为 1000",
+    "info": "sensor.0x00158d000926d0fa_power >8W 开始，<8W 持续 2 分钟确认结束，积分得到墙端度数（会话状态写入文件防重启丢失）。功率单位默认 W，若实体是 kW 请把 WATT_SCALE 改为 1000",
     "wires": []
   },
   {
@@ -191,13 +191,13 @@
     "type": "server-state-changed",
     "z": "el-tab",
     "name": "插座功率变化",
-    "server": "",
+    "server": "99c664b867ad2e30",
     "version": 6,
     "outputs": 1,
     "exposeAsEntityConfig": "",
     "entities": {
       "entity": [
-        "sensor.charger_power"
+        "sensor.0x00158d000926d0fa_power"
       ],
       "substring": [],
       "regex": []
@@ -298,13 +298,13 @@
     "type": "api-current-state",
     "z": "el-tab",
     "name": "确认当前功率",
-    "server": "",
+    "server": "99c664b867ad2e30",
     "version": 3,
     "outputs": 1,
     "halt_if": "",
     "halt_if_type": "str",
     "halt_if_compare": "is",
-    "entity_id": "sensor.charger_power",
+    "entity_id": "sensor.0x00158d000926d0fa_power",
     "state_type": "str",
     "blockInputOverrides": false,
     "outputProperties": [
@@ -507,13 +507,13 @@
     "type": "api-current-state",
     "z": "el-tab",
     "name": "读充电前累计电量",
-    "server": "",
+    "server": "99c664b867ad2e30",
     "version": 3,
     "outputs": 1,
     "halt_if": "",
     "halt_if_type": "str",
     "halt_if_compare": "is",
-    "entity_id": "sensor.charger_energy",
+    "entity_id": "sensor.0x00158d000926d0fa_energy",
     "state_type": "str",
     "blockInputOverrides": false,
     "outputProperties": [
@@ -570,13 +570,13 @@
     "type": "api-current-state",
     "z": "el-tab",
     "name": "读充电后累计电量",
-    "server": "",
+    "server": "99c664b867ad2e30",
     "version": 3,
     "outputs": 1,
     "halt_if": "",
     "halt_if_type": "str",
     "halt_if_compare": "is",
-    "entity_id": "sensor.charger_energy",
+    "entity_id": "sensor.0x00158d000926d0fa_energy",
     "state_type": "str",
     "blockInputOverrides": false,
     "outputProperties": [
@@ -832,6 +832,126 @@
     "wires": [
       [
         ""
+      ]
+    ]
+  },
+  {
+    "id": "el-inject-poll",
+    "type": "inject",
+    "z": "el-tab",
+    "name": "每5分钟刷新电量/里程",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      }
+    ],
+    "repeat": "300",
+    "crontab": "",
+    "once": true,
+    "onceDelay": 5,
+    "topic": "poll",
+    "payload": "",
+    "payloadType": "date",
+    "x": 80,
+    "y": 980,
+    "wires": [
+      [
+        "el-get-soc-poll",
+        "el-get-mile-poll"
+      ]
+    ]
+  },
+  {
+    "id": "el-get-soc-poll",
+    "type": "api-current-state",
+    "z": "el-tab",
+    "name": "轮询读电量",
+    "server": "",
+    "version": 3,
+    "outputs": 1,
+    "halt_if": "",
+    "halt_if_type": "str",
+    "halt_if_compare": "is",
+    "entity_id": "sensor.battery_level",
+    "state_type": "str",
+    "blockInputOverrides": false,
+    "outputProperties": [
+      {
+        "property": "payload",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "entityState"
+      },
+      {
+        "property": "data",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "entity"
+      },
+      {
+        "property": "topic",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "triggerId"
+      }
+    ],
+    "for": 0,
+    "forType": "num",
+    "forUnits": "minutes",
+    "x": 240,
+    "y": 960,
+    "wires": [
+      [
+        "el-fn-jump"
+      ]
+    ]
+  },
+  {
+    "id": "el-get-mile-poll",
+    "type": "api-current-state",
+    "z": "el-tab",
+    "name": "轮询读里程",
+    "server": "",
+    "version": 3,
+    "outputs": 1,
+    "halt_if": "",
+    "halt_if_type": "str",
+    "halt_if_compare": "is",
+    "entity_id": "sensor.total_odometer",
+    "state_type": "str",
+    "blockInputOverrides": false,
+    "outputProperties": [
+      {
+        "property": "payload",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "entityState"
+      },
+      {
+        "property": "data",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "entity"
+      },
+      {
+        "property": "topic",
+        "propertyType": "msg",
+        "value": "",
+        "valueType": "triggerId"
+      }
+    ],
+    "for": 0,
+    "forType": "num",
+    "forUnits": "minutes",
+    "x": 240,
+    "y": 1000,
+    "wires": [
+      [
+        "el-fn-mile-cache"
       ]
     ]
   }
