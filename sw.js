@@ -1,5 +1,5 @@
-/* 简单的离线缓存：首次访问后即可离线使用 */
-const CACHE = 'energy-tracker-v64';
+/* 简单的离线缓存：静态资源缓存优先；动态接口/跨域请求不缓存，直接走网络 */
+const CACHE = 'energy-tracker-v65';
 const ASSETS = [
   './',
   './index.html',
@@ -31,10 +31,16 @@ self.addEventListener('activate', function (e) {
 
 self.addEventListener('fetch', function (e) {
   if (e.request.method !== 'GET') return;
+  var reqUrl = new URL(e.request.url);
+  /* 动态接口（Node-RED 同步/备份等）与跨域请求不缓存，直接走网络，避免拿到旧数据 */
+  if (reqUrl.origin !== self.location.origin || reqUrl.pathname.indexOf('/api/') === 0) {
+    e.respondWith(fetch(e.request));
+    return;
+  }
   e.respondWith(
     caches.match(e.request).then(function (hit) {
       return hit || fetch(e.request).then(function (res) {
-        const copy = res.clone();
+        var copy = res.clone();
         caches.open(CACHE).then(function (c) { c.put(e.request, copy); });
         return res;
       }).catch(function () { return hit; });
