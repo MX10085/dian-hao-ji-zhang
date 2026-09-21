@@ -4,7 +4,7 @@
   const $ = Util.$, $$ = Util.$$;
   const STORE_KEY = 'energy-tracker.v1';
   const BACKUP_KEY = 'energy-tracker.backups.v1';
-  const APP_VERSION = 'v1.3';
+  const APP_VERSION = 'v1.4';
 
   const DEFAULT_SETTINGS = {
     vehicleName: '极核 AE6+',
@@ -267,12 +267,14 @@
     if (rec.full) sub.push('充满');
     if (rec.socEnd != null) sub.push('充至 ' + rec.socEnd + '%');
     if (rec.note) sub.push(rec.note);
-    return '<div class="rec-row" data-id="' + Util.esc(rec.id) + '">' +
+    const source = rec.source === 'node-red' ? '自动记录' : '手动记录';
+    const sourceClass = rec.source === 'node-red' ? 'auto' : 'manual';
+    const meta = [rec.type || '充电'];
+    if (rec.battery && rec.battery !== '未知') meta.push(rec.battery);
+    return '<div class="rec-row" data-id="' + Util.esc(rec.id) + '" tabindex="0" aria-label="点按显示编辑和删除操作">' +
       '<div class="rec-main">' +
-      '<div class="rec-top"><span class="rec-date">' + Util.esc(rec.date) + (rec.time ? ' ' + Util.esc(rec.time) : '') + '</span>' +
-      '<span class="badge">' + Util.esc(rec.type || '充电') + '</span>' +
-      (rec.source === 'node-red' ? '<span class="badge auto">自动</span>' : '<span class="badge man">手动</span>') +
-      (rec.battery && rec.battery !== '未知' ? '<span class="badge battery">' + Util.esc(rec.battery) + '</span>' : '') + '</div>' +
+      '<div class="rec-top"><span class="rec-date">' + Util.esc(rec.date) + (rec.time ? ' ' + Util.esc(rec.time) : '') + '</span></div>' +
+      '<div class="rec-meta"><span class="source-dot ' + sourceClass + '"></span>' + Util.esc(source) + ' · ' + Util.esc(meta.join(' · ')) + '</div>' +
       (seg && seg.distanceKm != null ? '<div class="rec-trip">本次行驶 ' + Util.fmt(seg.distanceKm, 1) + ' km</div>' : '') +
       '<div class="rec-sub">' + Util.esc(sub.join(' · ')) + '</div></div>' +
       '<div class="rec-nums">' +
@@ -283,9 +285,9 @@
   }
 
   function recActions() {
-    return '<div class="rec-actions">' +
-      '<button type="button" class="edit" data-act="edit" title="编辑">✎</button>' +
-      '<button type="button" class="del" data-act="del" title="删除">🗑</button></div>';
+    return '<div class="rec-actions" aria-hidden="true">' +
+      '<button type="button" class="edit" data-act="edit" title="编辑">编辑</button>' +
+      '<button type="button" class="del" data-act="del" title="删除">删除</button></div>';
   }
 
   /* ---------- 费用页 ---------- */
@@ -357,26 +359,35 @@
   function renderBatteryHealth(bh) {
     const el = $('#battery-health');
     if (!bh.hasData) {
+      el.className = 'stats health-stats';
       el.innerHTML = '<p class="muted">暂无足够数据：需要有「充电前后电量 %」和有效充电量的记录才能估算（电量差小于 20% 的充电会被跳过）。</p>';
       const batteryEl = $('#battery-breakdown');
       if (batteryEl) batteryEl.innerHTML = '';
       TrackerCharts.lineChart($('#chart-health'), [], {});
       return;
     }
-    el.innerHTML =
-      statCard('当前估算容量', Util.fmt(bh.latestWh, 0) + ' / <span class="nominal">' + Util.fmt(bh.nominalWh, 0) + '</span>', 'Wh', true, true) +
-      statCard('健康度 SOH', Util.fmt(bh.soh, 1), '%', bh.soh < 80) +
-      statCard('年均衰减', bh.lossPerYearWh != null ? (bh.lossPerYearWh > 0 ? '+' : '') + Util.fmt(bh.lossPerYearWh, 1) : '—', 'Wh/年');
     const batteryEl = $('#battery-breakdown');
     const batteryRows = ['电池 A', '电池 B'].map(function (name) {
       const rows = currentVehicle().records.filter(function (r) { return r.kind !== 'expense' && r.battery === name; });
       const stat = TrackerCalc.batteryHealth(rows, currentVehicle().settings);
       return { name: name, count: rows.length, stat: stat };
     }).filter(function (x) { return x.count > 0; });
-    if (batteryEl) {
-      batteryEl.innerHTML = batteryRows.length ? '<table><thead><tr><th>电池</th><th>记录</th><th>估算容量</th><th>SOH</th></tr></thead><tbody>' + batteryRows.map(function (x) {
-        return '<tr><td>' + Util.esc(x.name) + '</td><td>' + x.count + ' 次</td><td>' + (x.stat.latestWh != null ? Util.fmt(x.stat.latestWh, 0) + ' Wh' : '—') + '</td><td>' + (x.stat.soh != null ? Util.fmt(x.stat.soh, 1) + '%' : '—') + '</td></tr>';
-      }).join('') + '</tbody></table>' : '';
+    if (batteryRows.length) {
+      el.className = 'battery-card-grid';
+      el.innerHTML = batteryRows.map(function (x) {
+        const soh = x.stat.soh != null ? Util.fmt(x.stat.soh, 1) + '%' : '—';
+        const capacity = x.stat.latestWh != null ? Util.fmt(x.stat.latestWh, 0) + ' Wh' : '数据不足';
+        return '<div class="battery-card"><div class="battery-name">' + Util.esc(x.name) + '</div>' +
+          '<div class="battery-soh">' + soh + '</div><div class="battery-meta">' + capacity + ' · ' + x.count + ' 次记录</div></div>';
+      }).join('');
+      if (batteryEl) batteryEl.innerHTML = '<div class="battery-overall">总体估算 ' + Util.fmt(bh.latestWh, 0) + ' Wh · SOH ' + Util.fmt(bh.soh, 1) + '%</div>';
+    } else {
+      el.className = 'stats health-stats';
+      el.innerHTML =
+        statCard('当前估算容量', Util.fmt(bh.latestWh, 0) + ' / <span class="nominal">' + Util.fmt(bh.nominalWh, 0) + '</span>', 'Wh', true, true) +
+        statCard('健康度 SOH', Util.fmt(bh.soh, 1), '%', bh.soh < 80) +
+        statCard('年均衰减', bh.lossPerYearWh != null ? (bh.lossPerYearWh > 0 ? '+' : '') + Util.fmt(bh.lossPerYearWh, 1) : '—', 'Wh/年');
+      if (batteryEl) batteryEl.innerHTML = '';
     }
     const estPts = bh.estimates.map(function (e) { return { x: e.date, y: e.estWh }; });
     const estMean = estPts.length ? estPts.reduce(function (acc, p) { return acc + p.y; }, 0) / estPts.length : null;
@@ -741,6 +752,7 @@
       if (!btn) return;
       $$('#tabbar button').forEach(function (b) { b.classList.toggle('active', b === btn); });
       $$('.tab').forEach(function (t) { t.classList.toggle('active', t.id === 'tab-' + btn.dataset.tab); });
+      window.scrollTo(0, 0);
     });
 
     /* 记一笔（充电） */
@@ -768,10 +780,29 @@
     $('#f-full').addEventListener('change', function () {
       if (this.checked) $('#f-socEnd').value = 100;
     });
+    const toggleRowActions = function (row) {
+      if (!row) return;
+      const open = !row.classList.contains('actions-open');
+      row.parentElement.querySelectorAll('.rec-row.actions-open').forEach(function (r) {
+        r.classList.remove('actions-open');
+        const a = r.querySelector('.rec-actions');
+        if (a) a.setAttribute('aria-hidden', 'true');
+      });
+      row.classList.toggle('actions-open', open);
+      const actions = row.querySelector('.rec-actions');
+      if (actions) actions.setAttribute('aria-hidden', open ? 'false' : 'true');
+    };
+    const handleRowKey = function (ev) {
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      if (ev.target.closest('button')) return;
+      ev.preventDefault();
+      toggleRowActions(ev.target.closest('.rec-row'));
+    };
+    $('#record-list').addEventListener('keydown', handleRowKey);
     $('#record-list').addEventListener('click', function (ev) {
       const btn = ev.target.closest('button[data-act]');
-      if (!btn) return;
       const row = ev.target.closest('.rec-row');
+      if (!btn) { toggleRowActions(row); return; }
       const id = row && row.dataset.id;
       if (!id) return;
       if (btn.dataset.act === 'edit') {
@@ -799,10 +830,11 @@
     $$('#expense-dialog [data-close]').forEach(function (b) {
       b.addEventListener('click', function () { document.getElementById('expense-dialog').close(); });
     });
+    $('#expense-list').addEventListener('keydown', handleRowKey);
     $('#expense-list').addEventListener('click', function (ev) {
       const btn = ev.target.closest('button[data-act]');
-      if (!btn) return;
       const row = ev.target.closest('.rec-row');
+      if (!btn) { toggleRowActions(row); return; }
       const id = row && row.dataset.id;
       if (!id) return;
       if (btn.dataset.act === 'edit') {

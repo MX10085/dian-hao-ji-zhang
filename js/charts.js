@@ -383,9 +383,7 @@
     svgEl.addEventListener('pointerleave', onLeave);
   }
 
-  /*
-   * 时间轴缩放包装器：滚轮 / 双指捏合 / − ＋ ⟲ 按钮
-   */
+  /* 时间轴缩放包装器：常用范围按钮 + 滚轮 / 双指 / 高级微调 */
   function attachZoom(el, data, render, opts) {
     opts = opts || {};
     const minPoints = Math.max(opts.minPoints || 2, 2);
@@ -434,17 +432,27 @@
       return;
     }
 
+    let activeRange = opts.win ? '' : (opts.defaultWindowDays === 183 ? '183' : 'all');
     const controls = document.createElement('div');
     controls.className = 'zoom-controls';
     controls.innerHTML =
-      '<span class="zoom-hint">滚轮 / 双指缩放</span>' +
-      '<button type="button" class="zoom-btn" data-zoom="panL" title="往前翻">‹</button>' +
-      '<button type="button" class="zoom-btn" data-zoom="out" title="缩小">−</button>' +
-      '<button type="button" class="zoom-btn" data-zoom="in" title="放大">＋</button>' +
-      '<button type="button" class="zoom-btn" data-zoom="reset" title="重置">⟲</button>' +
-      '<button type="button" class="zoom-btn" data-zoom="panR" title="往后翻">›</button>' +
-      '<input type="date" class="zoom-date" title="跳到日期" />' +
-      '<span class="zoom-label"></span>';
+      '<div class="zoom-presets" role="group" aria-label="图表时间范围">' +
+        '<button type="button" data-range="30">1月</button>' +
+        '<button type="button" data-range="90">3月</button>' +
+        '<button type="button" data-range="183">半年</button>' +
+        '<button type="button" data-range="all">全部</button>' +
+        '<button type="button" data-zoom-more aria-expanded="false">更多</button>' +
+      '</div>' +
+      '<div class="zoom-advanced hidden">' +
+        '<span class="zoom-hint">滚轮 / 双指缩放</span>' +
+        '<button type="button" class="zoom-btn" data-zoom="panL" title="往前翻">‹</button>' +
+        '<button type="button" class="zoom-btn" data-zoom="out" title="缩小">−</button>' +
+        '<button type="button" class="zoom-btn" data-zoom="in" title="放大">＋</button>' +
+        '<button type="button" class="zoom-btn" data-zoom="reset" title="重置">⟲</button>' +
+        '<button type="button" class="zoom-btn" data-zoom="panR" title="往后翻">›</button>' +
+        '<input type="date" class="zoom-date" title="跳到日期" />' +
+        '<span class="zoom-label"></span>' +
+      '</div>';
     el.insertBefore(controls, body);
 
     const labelEl = controls.querySelector('.zoom-label');
@@ -454,6 +462,9 @@
       const fx = slice.length && slice[0].x != null ? String(slice[0].x).slice(0, 10) : '';
       const lx = slice.length && slice[slice.length - 1].x != null ? String(slice[slice.length - 1].x).slice(0, 10) : '';
       labelEl.textContent = fx ? fx + ' ~ ' + lx : '';
+      controls.querySelectorAll('[data-range]').forEach(function (b) {
+        b.classList.toggle('active', b.dataset.range === activeRange);
+      });
       notify();
     };
 
@@ -482,6 +493,7 @@
       if (s < 0) { s = 0; e = newLen; }
       if (e > maxPoints) { e = maxPoints; s = e - newLen; }
       win = { start: s, end: e };
+      activeRange = '';
       renderWin();
     };
     const panBy = function (deltaIdx) {
@@ -492,6 +504,7 @@
       if (e > maxPoints) { e = maxPoints; s = e - len; }
       if (s !== win.start) {
         win = { start: s, end: e };
+        activeRange = '';
         renderWin();
       }
     };
@@ -504,7 +517,26 @@
       if (s < 0) { s = 0; e = len; }
       if (e > maxPoints) { e = maxPoints; s = e - len; }
       win = { start: s, end: e };
+      activeRange = '';
       renderWin();
+    };
+
+    const rangeWindow = function (value) {
+      if (value === 'all') return { start: 0, end: maxPoints };
+      const days = Number(value);
+      const lastDate = Date.parse(String(data[maxPoints - 1].x || '').slice(0, 10));
+      if (!isNaN(lastDate)) {
+        const since = lastDate - days * 86400000;
+        let start = 0;
+        while (start < maxPoints - minPoints) {
+          const t = Date.parse(String(data[start].x || '').slice(0, 10));
+          if (!isNaN(t) && t >= since) break;
+          start += 1;
+        }
+        return { start: start, end: maxPoints };
+      }
+      const count = Math.max(minPoints, Math.min(maxPoints, Math.round(days / 30)));
+      return { start: maxPoints - count, end: maxPoints };
     };
 
     /* 按日期跳转：定位到数据中离目标日期最近的记录 */
@@ -531,10 +563,27 @@
       if (s < 0) { s = 0; e = len; }
       if (e > maxPoints) { e = maxPoints; s = e - len; }
       win = { start: s, end: e };
+      activeRange = '';
       renderWin();
     });
 
     controls.addEventListener('click', function (ev) {
+      const range = ev.target.closest('button[data-range]');
+      if (range) {
+        activeRange = range.dataset.range;
+        win = rangeWindow(activeRange);
+        renderWin();
+        return;
+      }
+      const more = ev.target.closest('button[data-zoom-more]');
+      if (more) {
+        const advanced = controls.querySelector('.zoom-advanced');
+        const opening = advanced.classList.contains('hidden');
+        advanced.classList.toggle('hidden', !opening);
+        more.setAttribute('aria-expanded', opening ? 'true' : 'false');
+        more.classList.toggle('active', opening);
+        return;
+      }
       const b = ev.target.closest('button[data-zoom]');
       if (!b) return;
       if (b.dataset.zoom === 'in') zoomBy(0.75);
@@ -543,6 +592,7 @@
       else if (b.dataset.zoom === 'panR') pan(1);
       else {
         win = defaultWin ? { start: defaultWin.start, end: defaultWin.end } : { start: 0, end: maxPoints };
+        activeRange = defaultWin ? String(opts.defaultWindowDays || '') : 'all';
         renderWin();
       }
     });

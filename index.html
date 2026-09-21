@@ -48,15 +48,20 @@
     </div>
     <div class="panel">
       <h2>电池健康估算</h2>
-      <p class="warn-hint">
-        <span class="dot gd-red"></span>低于平时
-        <span class="dot gd-green"></span>接近平均
-        <span class="dot gd-blue"></span>高于平时（优秀）
-      </p>
       <div id="battery-health" class="stats health-stats"></div>
       <div id="battery-breakdown" class="battery-breakdown"></div>
-      <div id="chart-health" class="chart"></div>
-      <p class="muted">按每次充电的「充电量 ÷ 电量差」反推当前可用容量，受充电器损耗和电量取整影响，结果仅供参考。</p>
+      <details class="health-trend">
+        <summary>容量趋势与详细图表</summary>
+        <div class="health-trend-body">
+          <p class="warn-hint">
+            <span class="dot gd-red"></span>低于平时
+            <span class="dot gd-green"></span>接近平均
+            <span class="dot gd-blue"></span>高于平时（优秀）
+          </p>
+          <div id="chart-health" class="chart"></div>
+          <p class="muted">按每次充电的「充电量 ÷ 电量差」反推当前可用容量，受充电器损耗和电量取整影响，结果仅供参考。</p>
+        </div>
+      </details>
     </div>
     <div class="panel">
       <div class="panel-head">
@@ -101,8 +106,9 @@
   </section>
 
   <section id="tab-settings" class="tab">
-    <div class="panel">
-      <h2>车辆管理</h2>
+    <details class="panel settings-section" open>
+      <summary>车辆管理</summary>
+      <div class="settings-body">
       <label class="muted" for="vehicle-select">当前车辆</label>
       <select id="vehicle-select" class="vehicle-select"></select>
       <div class="data-actions">
@@ -111,10 +117,12 @@
         <button id="btn-vehicle-del" class="btn" type="button">删除</button>
       </div>
       <p class="muted" style="margin-top:8px">切换车辆后，记录、统计、设置都按当前车辆独立保存。</p>
-    </div>
+      </div>
+    </details>
 
-    <form id="settings-form" class="panel form-panel">
-      <h2>车辆设置</h2>
+    <details class="panel settings-section">
+      <summary>车辆设置</summary>
+      <form id="settings-form" class="form-panel settings-body">
       <label>车辆名称
         <input name="vehicleName" type="text" />
       </label>
@@ -144,10 +152,12 @@
         </select>
       </label>
       <button class="btn primary" type="submit">保存设置</button>
-    </form>
+      </form>
+    </details>
 
-    <div class="panel">
-      <h2>Node-RED 自动记录同步</h2>
+    <details class="panel settings-section" open>
+      <summary>Node-RED 自动记录同步</summary>
+      <div class="settings-body">
       <label class="muted" for="sync-url">Node-RED 接口地址</label>
       <input id="sync-url" class="form-input" type="url" inputmode="url" placeholder="https://你的域名/api/records" />
       <label class="muted" for="sync-token">访问令牌</label>
@@ -158,10 +168,12 @@
       </div>
       <p id="sync-status" class="muted" style="margin-top:8px"></p>
       <p class="muted">未配置 Node-RED 时不影响使用：手动记账、统计、图表、本地备份全部正常。</p>
-    </div>
+      </div>
+    </details>
 
-    <div class="panel">
-      <h2>数据与备份</h2>
+    <details class="panel settings-section" open>
+      <summary>数据与备份</summary>
+      <div class="settings-body">
       <p class="muted">导入 / 导出：</p>
       <div class="data-actions">
         <button id="btn-import" class="btn" type="button">导入数据</button>
@@ -187,14 +199,17 @@
           <button id="btn-nas-restore" class="btn" type="button">从 NAS 恢复</button>
         </div>
       </div>
-    </div>
+      </div>
+    </details>
 
-    <div class="panel about-panel">
-      <h2>关于</h2>
+    <details class="panel settings-section about-panel">
+      <summary>关于</summary>
+      <div class="settings-body">
       <p>电耗记账 <span id="app-version" class="about-version"></span></p>
       <p>作者：<a href="https://github.com/MX10085" target="_blank" rel="noopener">MX10085</a></p>
       <p class="muted">离线 PWA · 数据只存本机 · <a href="https://github.com/MX10085/dian-hao-ji-zhang" target="_blank" rel="noopener">GitHub 仓库</a></p>
-    </div>
+      </div>
+    </details>
 
   </section>
 </main>
