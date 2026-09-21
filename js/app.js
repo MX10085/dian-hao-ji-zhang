@@ -927,13 +927,38 @@
   function defaultSyncUrl() {
     return 'http://localhost:1880/api/records';
   }
+  function buildApiUrl(raw, pathname) {
+    let u;
+    try { u = new URL(raw); } catch (e) { throw new Error('接口地址格式不正确'); }
+    if (!/^https?:$/.test(u.protocol)) throw new Error('接口地址必须使用 HTTP 或 HTTPS');
+    if (location.protocol === 'https:' && u.protocol === 'http:') {
+      throw new Error('当前应用通过 HTTPS 打开，浏览器禁止访问 HTTP 接口；请改用 HTTPS 反向代理地址');
+    }
+    if (pathname) u.pathname = pathname;
+    return u.toString();
+  }
+  function syncHttpError(res) {
+    if (res.status === 403) return new Error('认证失败（HTTP 403），请检查地址中的 token');
+    return new Error('HTTP ' + res.status);
+  }
+  function syncFailure(prefix, e) {
+    let message = e && e.message ? e.message : String(e);
+    if (e instanceof TypeError && /fetch|network|load/i.test(message)) {
+      message = '网络请求失败，请检查 HTTPS 反向代理、CORS 和网络连接';
+    }
+    return prefix + '：' + message;
+  }
   function renderSyncPanel() {
     const urlEl = $('#sync-url');
     const statusEl = $('#sync-status');
     if (!urlEl || !statusEl) return;
     const info = loadSyncInfo();
     urlEl.value = info.url || ''; // 隐私：不预填具体地址
-    statusEl.textContent = info.lastSync ? '上次同步：' + fmtLocalTime(info.lastSync) + '（接口共 ' + (info.lastCount || 0) + ' 条）' : '';
+    if (location.protocol === 'https:' && /^http:\/\//i.test(urlEl.value)) {
+      statusEl.textContent = '当前保存的是 HTTP 接口地址，请改用 HTTPS 反向代理地址。';
+    } else {
+      statusEl.textContent = info.lastSync ? '上次同步：' + fmtLocalTime(info.lastSync) + '（接口共 ' + (info.lastCount || 0) + ' 条）' : '';
+    }
   }
   function normalizeNodeRedRecord(r) {
     return {
@@ -958,9 +983,8 @@
   }
   async function refreshHassStatus(url) {
     try {
-      const u = new URL(url);
-      u.pathname = '/api/status';
-      const res = await fetch(u.toString(), { cache: 'no-store' });
+      const statusUrl = buildApiUrl(url, '/api/status');
+      const res = await fetch(statusUrl, { cache: 'no-store' });
       if (!res.ok) return;
       const st = await res.json();
       if (st && st.soc != null) {
@@ -990,7 +1014,7 @@
     if (!url) return;
     autoSyncBusy = true;
     try {
-      const res = await fetch(url, { cache: 'no-store' });
+      const res = await fetch(buildApiUrl(url), { cache: 'no-store' });
       if (!res.ok) return;
       const arr = await res.json();
       if (!Array.isArray(arr)) return;
@@ -1039,8 +1063,8 @@
     if (!url) { statusEl.textContent = '请先填写 Node-RED 接口地址'; return; }
     statusEl.textContent = '同步中…';
     try {
-      const res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const res = await fetch(buildApiUrl(url), { cache: 'no-store' });
+      if (!res.ok) throw syncHttpError(res);
       const arr = await res.json();
       if (!Array.isArray(arr)) throw new Error('返回格式不是数组');
       const merged = mergeNodeRedRecords(arr);
@@ -1052,23 +1076,18 @@
       statusEl.textContent = '同步完成：新增 ' + added + ' 条' + (skipped ? '，跳过 ' + skipped + ' 条重复' : '') + '（接口共 ' + arr.length + ' 条）';
       toast(added ? '已同步 ' + added + ' 条新记录' : '没有新记录');
     } catch (e) {
-      statusEl.textContent = '同步失败：' + (e && e.message ? e.message : e) + '。注意：https 页面不能访问局域网 http，请用局域网地址打开应用再同步。';
+      statusEl.textContent = syncFailure('同步失败', e);
     }
   }
   async function checkNodeRed() {
     const url = ($('#sync-url').value || '').trim();
     const statusEl = $('#sync-status');
     if (!url) { statusEl.textContent = '请先填写 Node-RED 接口地址'; return; }
-    let base = url;
-    try {
-      const u = new URL(url);
-      u.pathname = '/api/status';
-      base = u.toString();
-    } catch (e) {}
     statusEl.textContent = '检查中…';
     try {
-      const res = await fetch(base, { cache: 'no-store' });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const statusUrl = buildApiUrl(url, '/api/status');
+      const res = await fetch(statusUrl, { cache: 'no-store' });
+      if (!res.ok) throw syncHttpError(res);
       const st = await res.json();
       let text = '连接正常：已有记录 ' + (st.count || 0) + ' 条';
       if (st.pending) text += '，挂起换电（充电前 ' + st.pending.soc_before + '%）';
@@ -1079,7 +1098,7 @@
       statusEl.textContent = text;
       toast('Node-RED 连接正常');
     } catch (e) {
-      statusEl.textContent = '检查失败：' + (e && e.message ? e.message : e) + '。注意：https 页面不能访问局域网 http，请用局域网地址打开应用。';
+      statusEl.textContent = syncFailure('检查失败', e);
     }
   }
   function pushBackupToNodeRed(url) {
@@ -1093,7 +1112,7 @@
     const raw = ($('#sync-url').value || '').trim();
     if (!raw) { toast('请先填写 Node-RED 接口地址'); return; }
     let backupUrl;
-    try { const u = new URL(raw); u.pathname = '/api/backup'; backupUrl = u.toString(); } catch (e) { toast('接口地址格式不对'); return; }
+    try { backupUrl = buildApiUrl(raw, '/api/backup'); } catch (e) { toast(e.message || '接口地址格式不对'); return; }
     const ok = await pushBackupToNodeRed(backupUrl);
     localStorage.setItem('energy-tracker.nasbackup', JSON.stringify({ time: new Date().toISOString(), ok: ok }));
     renderNasBackupStatus();

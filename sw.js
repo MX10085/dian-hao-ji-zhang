@@ -1,5 +1,5 @@
 /* 简单的离线缓存：静态资源缓存优先；动态接口/跨域请求不缓存，直接走网络 */
-const CACHE = 'energy-tracker-v65';
+const CACHE = 'energy-tracker-v66';
 const ASSETS = [
   './',
   './index.html',
