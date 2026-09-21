@@ -4,7 +4,7 @@
   const $ = Util.$, $$ = Util.$$;
   const STORE_KEY = 'energy-tracker.v1';
   const BACKUP_KEY = 'energy-tracker.backups.v1';
-  const APP_VERSION = 'v1.2';
+  const APP_VERSION = 'v1.3';
 
   const DEFAULT_SETTINGS = {
     vehicleName: '极核 AE6+',
@@ -133,16 +133,12 @@
       toast('已自动下载今日备份');
     }
     /* 同步备份到 NAS（Node-RED /api/backup） */
-    const syncRaw = $('#sync-url') ? ($('#sync-url').value || '').trim() : '';
-    if (syncRaw) {
-      try {
-        const u = new URL(syncRaw);
-        u.pathname = '/api/backup';
-        pushBackupToNodeRed(u.toString()).then(function (ok) {
-          localStorage.setItem('energy-tracker.nasbackup', JSON.stringify({ time: new Date().toISOString(), ok: ok }));
-          renderNasBackupStatus();
-        });
-      } catch (e) {}
+    const syncInfo = findBackupSyncInfo();
+    if (syncInfo.url) {
+      pushBackupToNodeRed(syncInfo).then(function (ok) {
+        localStorage.setItem('energy-tracker.nasbackup', JSON.stringify({ time: new Date().toISOString(), ok: ok }));
+        renderNasBackupStatus();
+      });
     }
   }
   function ensureDailyBackup(force) {
@@ -275,7 +271,9 @@
       '<div class="rec-main">' +
       '<div class="rec-top"><span class="rec-date">' + Util.esc(rec.date) + (rec.time ? ' ' + Util.esc(rec.time) : '') + '</span>' +
       '<span class="badge">' + Util.esc(rec.type || '充电') + '</span>' +
-      (rec.source === 'node-red' ? '<span class="badge auto">自动</span>' : '<span class="badge man">手动</span>') + '</div>' +
+      (rec.source === 'node-red' ? '<span class="badge auto">自动</span>' : '<span class="badge man">手动</span>') +
+      (rec.battery && rec.battery !== '未知' ? '<span class="badge battery">' + Util.esc(rec.battery) + '</span>' : '') + '</div>' +
+      (seg && seg.distanceKm != null ? '<div class="rec-trip">本次行驶 ' + Util.fmt(seg.distanceKm, 1) + ' km</div>' : '') +
       '<div class="rec-sub">' + Util.esc(sub.join(' · ')) + '</div></div>' +
       '<div class="rec-nums">' +
       '<div class="num">' + Util.fmt(rec.energyKwh, 2) + ' <small>kWh</small></div>' +
@@ -360,6 +358,8 @@
     const el = $('#battery-health');
     if (!bh.hasData) {
       el.innerHTML = '<p class="muted">暂无足够数据：需要有「充电前后电量 %」和有效充电量的记录才能估算（电量差小于 20% 的充电会被跳过）。</p>';
+      const batteryEl = $('#battery-breakdown');
+      if (batteryEl) batteryEl.innerHTML = '';
       TrackerCharts.lineChart($('#chart-health'), [], {});
       return;
     }
@@ -367,6 +367,17 @@
       statCard('当前估算容量', Util.fmt(bh.latestWh, 0) + ' / <span class="nominal">' + Util.fmt(bh.nominalWh, 0) + '</span>', 'Wh', true, true) +
       statCard('健康度 SOH', Util.fmt(bh.soh, 1), '%', bh.soh < 80) +
       statCard('年均衰减', bh.lossPerYearWh != null ? (bh.lossPerYearWh > 0 ? '+' : '') + Util.fmt(bh.lossPerYearWh, 1) : '—', 'Wh/年');
+    const batteryEl = $('#battery-breakdown');
+    const batteryRows = ['电池 A', '电池 B'].map(function (name) {
+      const rows = currentVehicle().records.filter(function (r) { return r.kind !== 'expense' && r.battery === name; });
+      const stat = TrackerCalc.batteryHealth(rows, currentVehicle().settings);
+      return { name: name, count: rows.length, stat: stat };
+    }).filter(function (x) { return x.count > 0; });
+    if (batteryEl) {
+      batteryEl.innerHTML = batteryRows.length ? '<table><thead><tr><th>电池</th><th>记录</th><th>估算容量</th><th>SOH</th></tr></thead><tbody>' + batteryRows.map(function (x) {
+        return '<tr><td>' + Util.esc(x.name) + '</td><td>' + x.count + ' 次</td><td>' + (x.stat.latestWh != null ? Util.fmt(x.stat.latestWh, 0) + ' Wh' : '—') + '</td><td>' + (x.stat.soh != null ? Util.fmt(x.stat.soh, 1) + '%' : '—') + '</td></tr>';
+      }).join('') + '</tbody></table>' : '';
+    }
     const estPts = bh.estimates.map(function (e) { return { x: e.date, y: e.estWh }; });
     const estMean = estPts.length ? estPts.reduce(function (acc, p) { return acc + p.y; }, 0) / estPts.length : null;
     attachZoomSafe('#chart-health', estPts, function (slice, body) {
@@ -406,6 +417,7 @@
     } else {
       sel.value = '家充';
     }
+    $('#f-battery').value = rec && rec.battery ? rec.battery : '未知';
     $('#f-note').value = rec ? (rec.note || '') : '';
     $('#btn-del').classList.toggle('hidden', !rec);
     document.getElementById('record-dialog').showModal();
@@ -461,6 +473,7 @@
       cost: cost,
       full: $('#f-full').checked,
       type: $('#f-type').value,
+      battery: $('#f-battery').value || '未知',
       note: $('#f-note').value.trim()
     };
     if (rec.energyKwh == null && rec.cost != null && rec.price != null && rec.price > 0) {
@@ -909,7 +922,8 @@
   }
 
   /* ---------- Node-RED 自动记录同步 ---------- */
-  const SYNC_KEY = 'energy-tracker.nodered';
+  const LEGACY_SYNC_KEY = 'energy-tracker.nodered';
+  const SYNC_KEY = 'energy-tracker.nodered.v2';
 
   function fmtLocalTime(iso) {
     if (!iso) return '';
@@ -918,116 +932,158 @@
     const pad = function (n) { return String(n).padStart(2, '0'); };
     return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
-  function loadSyncInfo() {
-    try { return JSON.parse(localStorage.getItem(SYNC_KEY) || '{}'); } catch (e) { return {}; }
+  function splitEndpointToken(raw, explicitToken) {
+    if (!raw) return { url: '', token: explicitToken || '' };
+    try {
+      const u = new URL(raw);
+      const queryToken = u.searchParams.get('token') || '';
+      u.searchParams.delete('token');
+      return { url: u.toString(), token: explicitToken || queryToken };
+    } catch (e) { return { url: raw, token: explicitToken || '' }; }
   }
-  function saveSyncInfo(info) {
-    localStorage.setItem(SYNC_KEY, JSON.stringify(info));
+  function loadSyncStore() {
+    let store = {};
+    try { store = JSON.parse(localStorage.getItem(SYNC_KEY) || '{}') || {}; } catch (e) {}
+    if (!store.byVehicle) store.byVehicle = {};
+    if (!store.migrated) {
+      try {
+        const old = JSON.parse(localStorage.getItem(LEGACY_SYNC_KEY) || '{}');
+        if (old && old.url && !store.byVehicle[state.activeVehicleId]) {
+          const migrated = splitEndpointToken(old.url, old.token || '');
+          store.byVehicle[state.activeVehicleId] = { url: migrated.url, token: migrated.token, lastSuccess: old.lastSync || '', lastCount: old.lastCount || 0 };
+        }
+      } catch (e) {}
+      store.migrated = true;
+      localStorage.setItem(SYNC_KEY, JSON.stringify(store));
+      localStorage.removeItem(LEGACY_SYNC_KEY);
+    }
+    return store;
   }
-  function defaultSyncUrl() {
-    return 'http://localhost:1880/api/records';
+  function saveSyncStore(store) { localStorage.setItem(SYNC_KEY, JSON.stringify(store)); }
+  function loadSyncInfo(vehicleId) {
+    const store = loadSyncStore();
+    return Object.assign({}, store.byVehicle[vehicleId || state.activeVehicleId] || {});
   }
-  function buildApiUrl(raw, pathname) {
+  function saveSyncInfo(patch, vehicleId) {
+    const id = vehicleId || state.activeVehicleId;
+    const store = loadSyncStore();
+    const next = Object.assign({}, store.byVehicle[id] || {}, patch || {});
+    const clean = splitEndpointToken(next.url || '', next.token || '');
+    next.url = clean.url; next.token = clean.token;
+    store.byVehicle[id] = next;
+    saveSyncStore(store);
+    return next;
+  }
+  function currentSyncInput() {
+    const clean = splitEndpointToken(($('#sync-url').value || '').trim(), ($('#sync-token').value || '').trim());
+    return { url: clean.url, token: clean.token };
+  }
+  function saveCurrentSyncInput() { return saveSyncInfo(currentSyncInput()); }
+  function findBackupSyncInfo() {
+    const current = loadSyncInfo();
+    if (current.url) return current;
+    const store = loadSyncStore();
+    const ids = Object.keys(store.byVehicle);
+    for (let i = 0; i < ids.length; i++) {
+      const info = store.byVehicle[ids[i]];
+      if (info && info.url) return info;
+    }
+    return {};
+  }
+  function buildApiUrl(raw, pathname, params) {
     let u;
     try { u = new URL(raw); } catch (e) { throw new Error('接口地址格式不正确'); }
     if (!/^https?:$/.test(u.protocol)) throw new Error('接口地址必须使用 HTTP 或 HTTPS');
-    if (location.protocol === 'https:' && u.protocol === 'http:') {
-      throw new Error('当前应用通过 HTTPS 打开，浏览器禁止访问 HTTP 接口；请改用 HTTPS 反向代理地址');
-    }
+    if (location.protocol === 'https:' && u.protocol === 'http:') throw new Error('当前应用通过 HTTPS 打开，浏览器禁止访问 HTTP 接口；请改用 HTTPS 反向代理地址');
+    u.searchParams.delete('token');
     if (pathname) u.pathname = pathname;
+    Object.keys(params || {}).forEach(function (k) { u.searchParams.set(k, params[k]); });
     return u.toString();
   }
+  function apiFetch(info, pathname, options, params) {
+    options = Object.assign({ cache: 'no-store' }, options || {});
+    const headers = Object.assign({}, options.headers || {});
+    if (info.token) headers.Authorization = 'Bearer ' + info.token;
+    options.headers = headers;
+    return fetch(buildApiUrl(info.url, pathname, params), options);
+  }
   function syncHttpError(res) {
-    if (res.status === 403) return new Error('认证失败（HTTP 403），请检查地址中的 token');
+    if (res.status === 403) return new Error('认证失败（HTTP 403），请检查访问令牌');
     return new Error('HTTP ' + res.status);
   }
   function syncFailure(prefix, e) {
     let message = e && e.message ? e.message : String(e);
-    if (e instanceof TypeError && /fetch|network|load/i.test(message)) {
-      message = '网络请求失败，请检查 HTTPS 反向代理、CORS 和网络连接';
-    }
+    if (e instanceof TypeError && /fetch|network|load/i.test(message)) message = '网络请求失败，请检查 HTTPS 反向代理、CORS 和网络连接';
     return prefix + '：' + message;
   }
   function renderSyncPanel() {
-    const urlEl = $('#sync-url');
-    const statusEl = $('#sync-status');
-    if (!urlEl || !statusEl) return;
+    const urlEl = $('#sync-url'), tokenEl = $('#sync-token'), statusEl = $('#sync-status');
+    if (!urlEl || !tokenEl || !statusEl) return;
     const info = loadSyncInfo();
-    urlEl.value = info.url || ''; // 隐私：不预填具体地址
+    urlEl.value = info.url || ''; tokenEl.value = info.token || '';
+    statusEl.className = 'muted sync-status';
     if (location.protocol === 'https:' && /^http:\/\//i.test(urlEl.value)) {
-      statusEl.textContent = '当前保存的是 HTTP 接口地址，请改用 HTTPS 反向代理地址。';
-    } else {
-      statusEl.textContent = info.lastSync ? '上次同步：' + fmtLocalTime(info.lastSync) + '（接口共 ' + (info.lastCount || 0) + ' 条）' : '';
-    }
+      statusEl.textContent = '当前保存的是 HTTP 接口地址，请改用 HTTPS 反向代理地址。'; statusEl.classList.add('error');
+    } else if (info.lastError && (!info.lastSuccess || info.lastAttempt > info.lastSuccess)) {
+      statusEl.textContent = '最近检查失败：' + info.lastError; statusEl.classList.add('error');
+    } else if (info.lastSuccess) {
+      statusEl.textContent = '连接正常 · 最近同步 ' + fmtLocalTime(info.lastSuccess) + ' · 服务器 ' + (info.lastCount || 0) + ' 条'; statusEl.classList.add('ok');
+    } else statusEl.textContent = '';
   }
   function normalizeNodeRedRecord(r) {
-    return {
-      id: r.id || Util.uid(),
-      date: r.date || '',
-      time: r.time || '',
-      mileage: r.mileage != null ? Number(r.mileage) : null,
-      socStart: r.socStart != null ? Number(r.socStart) : null,
-      socEnd: r.socEnd != null ? Number(r.socEnd) : null,
-      energyKwh: r.energyKwh != null ? Number(r.energyKwh) : null,
-      cost: r.cost != null ? Number(r.cost) : null,
-      price: r.price != null ? Number(r.price) : null,
-      full: !!r.full,
-      type: r.type || '家充',
-      note: r.note || '',
-      battery: r.battery || '未知',
-      source: 'node-red'
-    };
+    return { id:r.id||Util.uid(), date:r.date||'', time:r.time||'', mileage:r.mileage!=null?Number(r.mileage):null, socStart:r.socStart!=null?Number(r.socStart):null, socEnd:r.socEnd!=null?Number(r.socEnd):null, energyKwh:r.energyKwh!=null?Number(r.energyKwh):null, cost:r.cost!=null?Number(r.cost):null, price:r.price!=null?Number(r.price):null, full:!!r.full, type:r.type||'家充', note:r.note||'', battery:r.battery||'未知', source:'node-red' };
   }
+  function hassStatusKey(vehicleId) { return 'energy-tracker.hastatus.' + (vehicleId || state.activeVehicleId); }
   function loadHassStatus() {
-    try { return JSON.parse(localStorage.getItem('energy-tracker.hastatus') || 'null'); } catch (e) { return null; }
-  }
-  async function refreshHassStatus(url) {
     try {
-      const statusUrl = buildApiUrl(url, '/api/status');
-      const res = await fetch(statusUrl, { cache: 'no-store' });
-      if (!res.ok) return;
-      const st = await res.json();
-      if (st && st.soc != null) {
-        localStorage.setItem('energy-tracker.hastatus', JSON.stringify({ soc: Number(st.soc), mileage: st.mileage != null ? Number(st.mileage) : null, range: st.range != null ? Number(st.range) : null, time: Date.now() }));
-      }
-    } catch (e) {}
+      const key=hassStatusKey(); let value=localStorage.getItem(key);
+      if (!value) { value=localStorage.getItem('energy-tracker.hastatus'); if(value){localStorage.setItem(key,value);localStorage.removeItem('energy-tracker.hastatus');} }
+      return JSON.parse(value||'null');
+    } catch(e){ return null; }
   }
-  function mergeNodeRedRecords(arr) {
-    const v = currentVehicle();
-    const ids = {};
-    v.records.forEach(function (r) { if (r.id) ids[r.id] = true; });
-    let added = 0, skipped = 0;
-    arr.forEach(function (r) {
-      if (!r || typeof r !== 'object') return;
-      if (!r.id) r.id = Util.uid();
-      if (ids[r.id]) { skipped++; return; }
-      v.records.push(normalizeNodeRedRecord(r));
-      ids[r.id] = true;
-      added++;
+  function saveHassStatus(st, vehicleId) {
+    if (!st || st.soc == null) return;
+    localStorage.setItem(hassStatusKey(vehicleId), JSON.stringify({soc:Number(st.soc),mileage:st.mileage!=null?Number(st.mileage):null,range:st.range!=null?Number(st.range):null,time:Date.now()}));
+  }
+  async function refreshHassStatus(info, vehicleId) {
+    try { const res=await apiFetch(info,'/api/status'); if(res.ok) saveHassStatus(await res.json(),vehicleId); } catch(e){}
+  }
+  function mergeNodeRedRecords(arr, vehicleId) {
+    const v=state.vehicles.find(function(x){return x.id===vehicleId;})||currentVehicle();
+    const index={}; v.records.forEach(function(r,i){if(r.id)index[r.id]=i;});
+    let added=0,updated=0,unchanged=0,conflicts=0;
+    arr.forEach(function(raw){
+      if(!raw||typeof raw!=='object')return;
+      const server=normalizeNodeRedRecord(raw),pos=index[server.id];
+      if(pos===undefined){index[server.id]=v.records.length;v.records.push(server);added++;return;}
+      const local=v.records[pos];
+      if(local.source==='node-red'){if(JSON.stringify(local)!==JSON.stringify(server)){v.records[pos]=server;updated++;}else unchanged++;}else conflicts++;
     });
-    return { added: added, skipped: skipped };
+    return {added:added,updated:updated,unchanged:unchanged,conflicts:conflicts};
   }
-  let autoSyncBusy = false;
+  function recordSyncResult(vehicleId,info,ok,count,error) {
+    const now=new Date().toISOString(),patch={url:info.url,token:info.token,lastAttempt:now};
+    if(ok){patch.lastSuccess=now;patch.lastCount=count||0;patch.lastError='';}else patch.lastError=error||'未知错误';
+    return saveSyncInfo(patch,vehicleId);
+  }
+  let autoSyncBusy=false;
   async function autoSyncOnOpen() {
-    if (autoSyncBusy) return;
-    const url = ($('#sync-url').value || '').trim();
-    if (!url) return;
-    autoSyncBusy = true;
-    try {
-      const res = await fetch(buildApiUrl(url), { cache: 'no-store' });
-      if (!res.ok) return;
-      const arr = await res.json();
-      if (!Array.isArray(arr)) return;
-      const r = mergeNodeRedRecords(arr);
-      if (r.added) {
-        save();
-        saveSyncInfo({ url: url, lastSync: new Date().toISOString(), lastCount: arr.length });
-        renderAll();
-        toast('自动同步：新增 ' + r.added + ' 条记录');
-      }
-      refreshHassStatus(url);
-    } catch (e) {}
-    autoSyncBusy = false;
+    if(autoSyncBusy)return;
+    const vehicleId=state.activeVehicleId,info=loadSyncInfo(vehicleId);
+    if(!info.url)return;
+    autoSyncBusy=true;
+    try{
+      const res=await apiFetch(info,null);if(!res.ok)throw syncHttpError(res);
+      const arr=await res.json();if(!Array.isArray(arr))throw new Error('返回格式不是数组');
+      const merged=mergeNodeRedRecords(arr,vehicleId);
+      if(merged.added||merged.updated)save();
+      recordSyncResult(vehicleId,info,true,arr.length,'');
+      await refreshHassStatus(info,vehicleId);
+      if(vehicleId===state.activeVehicleId){renderAll();if(merged.added||merged.updated)toast('自动同步：新增 '+merged.added+' 条，更新 '+merged.updated+' 条');}
+    }catch(e){
+      recordSyncResult(vehicleId,info,false,0,e&&e.message?e.message:String(e));
+      if(vehicleId===state.activeVehicleId)renderSyncPanel();
+    }finally{autoSyncBusy=false;}
   }
   function exportMonthReport() {
     const now = new Date();
@@ -1058,73 +1114,80 @@
     toast('月度报告已导出');
   }
   async function syncNodeRed() {
-    const url = ($('#sync-url').value || '').trim();
-    const statusEl = $('#sync-status');
-    if (!url) { statusEl.textContent = '请先填写 Node-RED 接口地址'; return; }
-    statusEl.textContent = '同步中…';
-    try {
-      const res = await fetch(buildApiUrl(url), { cache: 'no-store' });
-      if (!res.ok) throw syncHttpError(res);
-      const arr = await res.json();
-      if (!Array.isArray(arr)) throw new Error('返回格式不是数组');
-      const merged = mergeNodeRedRecords(arr);
-      const added = merged.added, skipped = merged.skipped;
-      save();
-      saveSyncInfo({ url: url, lastSync: new Date().toISOString(), lastCount: arr.length });
-      renderAll();
-      refreshHassStatus(url);
-      statusEl.textContent = '同步完成：新增 ' + added + ' 条' + (skipped ? '，跳过 ' + skipped + ' 条重复' : '') + '（接口共 ' + arr.length + ' 条）';
-      toast(added ? '已同步 ' + added + ' 条新记录' : '没有新记录');
-    } catch (e) {
-      statusEl.textContent = syncFailure('同步失败', e);
+    const vehicleId=state.activeVehicleId,info=saveCurrentSyncInput(),statusEl=$('#sync-status');
+    if(!info.url){statusEl.textContent='请先填写 Node-RED 接口地址';return;}
+    statusEl.className='muted sync-status';statusEl.textContent='同步中…';
+    try{
+      const res=await apiFetch(info,null);if(!res.ok)throw syncHttpError(res);
+      const arr=await res.json();if(!Array.isArray(arr))throw new Error('返回格式不是数组');
+      const merged=mergeNodeRedRecords(arr,vehicleId);if(merged.added||merged.updated)save();
+      recordSyncResult(vehicleId,info,true,arr.length,'');await refreshHassStatus(info,vehicleId);renderAll();
+      let text='同步完成：新增 '+merged.added+' 条，更新 '+merged.updated+' 条';
+      if(merged.conflicts)text+='，保留 '+merged.conflicts+' 条手动修改';
+      statusEl.textContent=text+'（服务器共 '+arr.length+' 条）';statusEl.classList.add('ok');
+      toast(merged.added||merged.updated?'记录已同步':'记录已经是最新');
+    }catch(e){
+      const message=e&&e.message?e.message:String(e);recordSyncResult(vehicleId,info,false,0,message);
+      statusEl.textContent=syncFailure('同步失败',e);statusEl.classList.add('error');
     }
   }
   async function checkNodeRed() {
-    const url = ($('#sync-url').value || '').trim();
-    const statusEl = $('#sync-status');
-    if (!url) { statusEl.textContent = '请先填写 Node-RED 接口地址'; return; }
-    statusEl.textContent = '检查中…';
-    try {
-      const statusUrl = buildApiUrl(url, '/api/status');
-      const res = await fetch(statusUrl, { cache: 'no-store' });
-      if (!res.ok) throw syncHttpError(res);
-      const st = await res.json();
-      let text = '连接正常：已有记录 ' + (st.count || 0) + ' 条';
-      if (st.pending) text += '，挂起换电（充电前 ' + st.pending.soc_before + '%）';
-      if (st.session && st.session.active) text += '，正在充电';
-      if (st.soc != null) {
-        localStorage.setItem('energy-tracker.hastatus', JSON.stringify({ soc: Number(st.soc), mileage: st.mileage != null ? Number(st.mileage) : null, range: st.range != null ? Number(st.range) : null, time: Date.now() }));
-      }
-      statusEl.textContent = text;
-      toast('Node-RED 连接正常');
-    } catch (e) {
-      statusEl.textContent = syncFailure('检查失败', e);
+    const vehicleId=state.activeVehicleId,info=saveCurrentSyncInput(),statusEl=$('#sync-status');
+    if(!info.url){statusEl.textContent='请先填写 Node-RED 接口地址';return;}
+    statusEl.className='muted sync-status';statusEl.textContent='检查中…';
+    try{
+      const res=await apiFetch(info,'/api/status');if(!res.ok)throw syncHttpError(res);
+      const st=await res.json();saveHassStatus(st,vehicleId);recordSyncResult(vehicleId,info,true,st.count||0,'');
+      let text='连接正常：服务器记录 '+(st.count||0)+' 条';
+      if(st.pending)text+='，挂起换电（充电前 '+st.pending.soc_before+'%）';
+      if(st.session&&st.session.active)text+='，正在充电';
+      statusEl.textContent=text;statusEl.classList.add('ok');toast('Node-RED 连接正常');
+    }catch(e){
+      const message=e&&e.message?e.message:String(e);recordSyncResult(vehicleId,info,false,0,message);
+      statusEl.textContent=syncFailure('检查失败',e);statusEl.classList.add('error');
     }
   }
-  function pushBackupToNodeRed(url) {
-    return fetch(url, {
-      method: 'POST',
-      body: JSON.stringify({ app: 'energy-tracker', savedAt: new Date().toISOString(), vehicles: state.vehicles, activeVehicleId: state.activeVehicleId }),
-      headers: { 'Content-Type': 'text/plain;charset=UTF-8' }
-    }).then(function (res) { return res.ok; }).catch(function () { return false; });
+  function pushBackupToNodeRed(info) {
+    return apiFetch(info,'/api/backup',{method:'POST',body:JSON.stringify({app:'energy-tracker',savedAt:new Date().toISOString(),vehicles:state.vehicles,activeVehicleId:state.activeVehicleId}),headers:{'Content-Type':'text/plain;charset=UTF-8'}}).then(function(res){return res.ok;}).catch(function(){return false;});
   }
   async function pushBackupNow() {
-    const raw = ($('#sync-url').value || '').trim();
-    if (!raw) { toast('请先填写 Node-RED 接口地址'); return; }
-    let backupUrl;
-    try { backupUrl = buildApiUrl(raw, '/api/backup'); } catch (e) { toast(e.message || '接口地址格式不对'); return; }
-    const ok = await pushBackupToNodeRed(backupUrl);
-    localStorage.setItem('energy-tracker.nasbackup', JSON.stringify({ time: new Date().toISOString(), ok: ok }));
-    renderNasBackupStatus();
-    toast(ok ? '已备份到 NAS' : '备份到 NAS 失败');
+    const info=saveCurrentSyncInput();if(!info.url){toast('请先填写 Node-RED 接口地址');return;}
+    const ok=await pushBackupToNodeRed(info);
+    localStorage.setItem('energy-tracker.nasbackup',JSON.stringify({time:new Date().toISOString(),ok:ok}));
+    renderNasBackupStatus();toast(ok?'已备份到 NAS':'备份到 NAS 失败');
   }
   function renderNasBackupStatus() {
-    const el = $('#nas-backup-status');
-    if (!el) return;
-    try {
-      const info = JSON.parse(localStorage.getItem('energy-tracker.nasbackup') || 'null');
-      el.textContent = info ? 'NAS 备份：' + fmtLocalTime(info.time) + (info.ok ? ' 成功' : ' 失败') : '';
-    } catch (e) { el.textContent = ''; }
+    const el=$('#nas-backup-status'),sel=$('#nas-backup-select');
+    if(sel&&!sel.options.length)sel.innerHTML='<option value="">点击“刷新 NAS 备份”加载</option>';
+    if(!el)return;
+    try{const info=JSON.parse(localStorage.getItem('energy-tracker.nasbackup')||'null');el.textContent=info?'NAS 备份：'+fmtLocalTime(info.time)+(info.ok?' 成功':' 失败'):'';}catch(e){el.textContent='';}
+  }
+  async function loadNasBackups() {
+    const info=saveCurrentSyncInput(),sel=$('#nas-backup-select');
+    if(!info.url){toast('请先填写 Node-RED 接口地址');return;}
+    try{
+      const res=await apiFetch(info,'/api/backups');if(!res.ok)throw syncHttpError(res);
+      const data=await res.json(),list=Array.isArray(data.backups)?data.backups:[];
+      sel.innerHTML=list.length?list.map(function(b){const kb=b.size?' · '+Math.max(1,Math.round(b.size/1024))+' KB':'';return '<option value="'+Util.esc(b.file)+'">'+Util.esc(b.date||b.file)+kb+'</option>';}).join(''):'<option value="">没有 NAS 备份</option>';
+      toast('已加载 '+list.length+' 份 NAS 备份');
+    }catch(e){toast(syncFailure('读取 NAS 备份失败',e));}
+  }
+  function normalizeRestoredState(data) {
+    const src=data&&data.data?data.data:data;
+    if(!src||!Array.isArray(src.vehicles)||!src.vehicles.length)throw new Error('备份内容无效');
+    const vehicles=src.vehicles.map(function(v){const settings=Object.assign({},JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),v.settings||{});return{id:v.id||Util.uid(),name:(v.name||settings.vehicleName||'我的车').trim(),settings:settings,records:Array.isArray(v.records)?v.records:[]};});
+    const active=vehicles.some(function(v){return v.id===src.activeVehicleId;})?src.activeVehicleId:vehicles[0].id;
+    return{vehicles:vehicles,activeVehicleId:active,autoDownload:!!state.autoDownload};
+  }
+  async function restoreNasBackup() {
+    const info=saveCurrentSyncInput(),sel=$('#nas-backup-select'),file=sel&&sel.value;
+    if(!info.url){toast('请先填写 Node-RED 接口地址');return;}
+    if(!file){toast('请先刷新并选择 NAS 备份');return;}
+    if(!confirm('从 NAS 恢复 '+file.replace(/^app_backup_|\.json$/g,'')+'？当前数据会先保存一份本地快照。'))return;
+    try{
+      const res=await apiFetch(info,'/api/backup',null,{file:file});if(!res.ok)throw syncHttpError(res);
+      const restored=normalizeRestoredState(await res.json());createBackup(false);state=restored;save();renderAll();toast('已从 NAS 恢复');
+    }catch(e){toast(syncFailure('NAS 恢复失败',e));}
   }
   function caretScrollLeft(el, pos) {
     try {
@@ -1141,26 +1204,18 @@
     } catch (e) { return el.scrollWidth; }
   }
   function bindSyncEvents() {
-    $('#btn-sync-node-red').addEventListener('click', syncNodeRed);
-    $('#btn-check-nodered').addEventListener('click', checkNodeRed);
-    $('#btn-nas-backup').addEventListener('click', pushBackupNow);
-    document.addEventListener('selectionchange', function () {
-      const el = document.activeElement;
-      if (el && el.id === 'sync-url') {
-        setTimeout(function () {
-          el.scrollLeft = caretScrollLeft(el, el.selectionStart != null ? el.selectionStart : el.value.length);
-        }, 0);
-      }
+    $('#btn-sync-node-red').addEventListener('click',syncNodeRed);
+    $('#btn-check-nodered').addEventListener('click',checkNodeRed);
+    $('#btn-nas-backup').addEventListener('click',pushBackupNow);
+    $('#btn-nas-list').addEventListener('click',loadNasBackups);
+    $('#btn-nas-restore').addEventListener('click',restoreNasBackup);
+    ['sync-url','sync-token'].forEach(function(id){$('#'+id).addEventListener('change',saveCurrentSyncInput);});
+    document.addEventListener('selectionchange',function(){
+      const el=document.activeElement;
+      if(el&&el.id==='sync-url')setTimeout(function(){el.scrollLeft=caretScrollLeft(el,el.selectionStart!=null?el.selectionStart:el.value.length);},0);
     });
-    const syncUrlEl = $('#sync-url');
-    ['input', 'keyup', 'keydown', 'click'].forEach(function (t) {
-      syncUrlEl.addEventListener(t, function () {
-        const el = this;
-        setTimeout(function () {
-          el.scrollLeft = caretScrollLeft(el, el.selectionStart != null ? el.selectionStart : el.value.length);
-        }, 0);
-      });
-    });
+    const syncUrlEl=$('#sync-url');
+    ['input','keyup','keydown','click'].forEach(function(t){syncUrlEl.addEventListener(t,function(){const el=this;setTimeout(function(){el.scrollLeft=caretScrollLeft(el,el.selectionStart!=null?el.selectionStart:el.value.length);},0);});});
   }
   /* ---------- PWA ---------- */
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

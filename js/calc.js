@@ -64,7 +64,7 @@
     return km > 0 ? sum / km : null;
   }
 
-  function summary(records, settings) {
+  function summary(records, settings, nowDate) {
     const segs = computeSegments(records, settings);
     const charges = records.filter(function (r) { return r.kind !== 'expense'; });
     const expenses = records.filter(function (r) { return r.kind === 'expense'; });
@@ -105,7 +105,7 @@
     const monthList = Object.keys(monthCharges).sort().map(function (m) {
       return { month: m, cost: round2(monthCharges[m].cost), wall: round2(monthCharges[m].wall) };
     });
-    const now = new Date();
+    const now = nowDate instanceof Date ? nowDate : new Date();
     const thisMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
     const thisMonthCost = monthCharges[thisMonth] ? monthCharges[thisMonth].cost : 0;
 

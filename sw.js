@@ -1,5 +1,5 @@
 /* 简单的离线缓存：静态资源缓存优先；动态接口/跨域请求不缓存，直接走网络 */
-const CACHE = 'energy-tracker-v66';
+const CACHE = 'energy-tracker-v67';
 const ASSETS = [
   './',
   './index.html',
@@ -10,7 +10,10 @@ const ASSETS = [
   './js/charts.js',
   './js/app.js',
   './manifest.webmanifest',
-  './icon.svg'
+  './icon.svg',
+  './icons/icon-180.png',
+  './icons/icon-192.png',
+  './icons/icon-512.png'
 ];
 
 self.addEventListener('install', function (e) {

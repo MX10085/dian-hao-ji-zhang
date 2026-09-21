@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" href="icon.svg" type="image/svg+xml" />
-<link rel="apple-touch-icon" href="icon.svg" />
+<link rel="apple-touch-icon" href="icons/icon-180.png" />
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -54,6 +54,7 @@
         <span class="dot gd-blue"></span>高于平时（优秀）
       </p>
       <div id="battery-health" class="stats health-stats"></div>
+      <div id="battery-breakdown" class="battery-breakdown"></div>
       <div id="chart-health" class="chart"></div>
       <p class="muted">按每次充电的「充电量 ÷ 电量差」反推当前可用容量，受充电器损耗和电量取整影响，结果仅供参考。</p>
     </div>
@@ -148,7 +149,9 @@
     <div class="panel">
       <h2>Node-RED 自动记录同步</h2>
       <label class="muted" for="sync-url">Node-RED 接口地址</label>
-      <input id="sync-url" class="form-input" type="text" placeholder="https://你的域名/api/records?token=你的令牌" />
+      <input id="sync-url" class="form-input" type="url" inputmode="url" placeholder="https://你的域名/api/records" />
+      <label class="muted" for="sync-token">访问令牌</label>
+      <input id="sync-token" class="form-input" type="password" autocomplete="off" placeholder="Node-RED 访问令牌" />
       <div class="data-actions" style="margin-top:8px">
         <button id="btn-sync-node-red" class="btn" type="button">同步记录</button>
         <button id="btn-check-nodered" class="btn" type="button">检查连接</button>
@@ -177,6 +180,13 @@
       </div>
       <div id="backup-list" class="backup-list" style="margin-top:10px"></div>
       <p id="nas-backup-status" class="muted" style="margin-top:8px"></p>
+      <div class="nas-restore">
+        <select id="nas-backup-select" class="nas-restore-select" aria-label="NAS 备份"></select>
+        <div class="data-actions">
+          <button id="btn-nas-list" class="btn" type="button">刷新 NAS 备份</button>
+          <button id="btn-nas-restore" class="btn" type="button">从 NAS 恢复</button>
+        </div>
+      </div>
     </div>
 
     <div class="panel about-panel">
@@ -227,6 +237,13 @@
         </select>
       </label>
     </div>
+    <label>电池
+      <select id="f-battery">
+        <option value="未知">未知</option>
+        <option value="电池 A">电池 A</option>
+        <option value="电池 B">电池 B</option>
+      </select>
+    </label>
     <label>备注
       <input id="f-note" type="text" maxlength="64" placeholder="可写充电地点、温度等" />
     </label>

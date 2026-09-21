@@ -4,7 +4,7 @@
     "type": "tab",
     "label": "电耗记账 · 自动记录",
     "disabled": false,
-    "info": "AE6 两电池交替充电自动记录：\n1. 电量跳变≥90% → 换电：回填上条记录实际充后电量、存挂起数据、发通知\n2. 插座>8W 开始会话（读累计电量起始值），<8W 持续2分钟结束\n3. 结束读数差值算度数（回退功率积分）\n4. <0.5kWh 视为插座他用，忽略且保留挂起数据\n5. 正常结束生成记录 + 通知\n6. GET /api/records、/api/status（含电量/里程）、POST /api/backup",
+    "info": "AE6 两电池交替充电自动记录：\n1. 电量跳变≥90% → 换电：回填上条记录实际充后电量、存挂起数据、发通知\n2. 插座>8W 开始会话（读累计电量起始值），<8W 持续2分钟结束\n3. 结束读数差值算度数（回退功率积分）\n4. <0.5kWh 视为插座他用，忽略且保留挂起数据\n5. 正常结束生成记录 + 通知\n6. GET /api/records、/api/status（含电量/里程）、POST /api/backup、GET /api/backups、GET /api/backup?file=...",
     "env": []
   },
   {
@@ -77,16 +77,17 @@
     "id": "el-fn-jump",
     "type": "function",
     "z": "el-tab",
+    "g": "c0158c2515008b07",
     "name": "换电判定",
-    "func": "const newS = Number(msg.payload);\nconst prevSoc = flow.get('prevSoc');\nconst oldS = msg.data && msg.data.old_state ? Number(msg.data.old_state.state) : (prevSoc != null ? Number(prevSoc) : NaN);\nif (!isNaN(newS)) {\n  flow.set('prevSoc', newS);\n  flow.set('curSoc', newS);\n  node.status({ text: '电量 ' + newS + '%', fill: 'green' });\n}\nif (isNaN(oldS) || isNaN(newS)) return null;\nif (newS >= 90 && oldS < 90) {\n  flow.set('swapSocBefore', oldS);\n  node.status({ text: '换电 ' + oldS + '→' + newS + '%', fill: 'blue' });\n  /* 回填：最近一条 node-red 记录的实际充后电量 */\n  try {\n    const fsx = global.get('fs');\n    const dir = '/data/electric-log';\n    const file = dir + '/records.jsonl';\n    const lines = fsx.readFileSync(file, 'utf8').split('\\n').filter(Boolean);\n    if (lines.length) {\n      const last = JSON.parse(lines[lines.length - 1]);\n      const lastDate = Date.parse(last.date || '');\n      if (lastDate && Date.now() - lastDate < 3 * 86400000 && last.socEnd === 100 && last.source === 'node-red') {\n        last.socEnd = newS;\n        last.full = newS >= 90;\n        last.note = (last.note ? last.note + '；' : '') + '回填实际充后电量' + newS + '%';\n        lines[lines.length - 1] = JSON.stringify(last);\n        fsx.writeFileSync(file, lines.join('\\n') + '\\n');\n      }\n    }\n  } catch (e) {}\n  return [msg, { payload: { soc: oldS } }];\n}\nreturn null;",
+    "func": "const newS=Number(msg.payload),prevSoc=flow.get('prevSoc','file'),oldS=msg.data&&msg.data.old_state?Number(msg.data.old_state.state):(prevSoc!=null?Number(prevSoc):NaN);if(!isNaN(newS)){flow.set('prevSoc',newS,'file');flow.set('curSoc',newS,'file');node.status({text:'电量 '+newS+'%',fill:'green'});}if(isNaN(oldS)||isNaN(newS))return null;if(newS>=90&&oldS<90){flow.set('swapSocBefore',oldS,'file');node.status({text:'换电 '+oldS+'→'+newS+'%',fill:'blue'});try{const fsx=global.get('fs'),dir='/data/electric-log',file=dir+'/records.jsonl',nl=String.fromCharCode(10),lines=fsx.readFileSync(file,'utf8').split(nl).filter(Boolean);if(lines.length){const last=JSON.parse(lines[lines.length-1]),lastDate=Date.parse((last.date||'')+'T00:00:00');if(lastDate&&Date.now()-lastDate<3*86400000&&last.socEnd===100&&last.source==='node-red'){last.socEnd=newS;last.full=newS>=90;last.note=(last.note?last.note+'；':'')+'回填实际充后电量'+newS+'%';lines[lines.length-1]=JSON.stringify(last);const tmp=file+'.tmp';fsx.writeFileSync(tmp,lines.join(nl)+nl,{mode:0o600});fsx.renameSync(tmp,file);}}}catch(e){node.warn('回填充后电量失败：'+e.message);}return[msg,{payload:{soc:oldS}}];}return null;",
     "outputs": 2,
     "timeout": 0,
     "noerr": 0,
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 350,
-    "y": 180,
+    "x": 780,
+    "y": 420,
     "wires": [
       [
         "el-get-mile"
@@ -145,16 +146,17 @@
     "id": "el-fn-save-pending",
     "type": "function",
     "z": "el-tab",
+    "g": "c0158c2515008b07",
     "name": "保存挂起数据",
-    "func": "const fs = global.get('fs');\nconst dir = '/data/electric-log';\ntry { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}\nconst p = {\n  time: new Date().toISOString(),\n  soc_before: flow.get('swapSocBefore'),\n  mileage: Number(msg.payload) || null\n};\nfs.writeFileSync(dir + '/pending_swap.json', JSON.stringify(p, null, 2));\nnode.status({ text: '挂起: 前' + p.soc_before + '% 里程' + p.mileage, fill: 'blue' });\nmsg.payload = p;\nreturn msg;",
+    "func": "const fs=global.get('fs'),dir='/data/electric-log';try{fs.mkdirSync(dir,{recursive:true});}catch(e){}const battery=flow.get('nextChargeBattery','file')||'电池 A';flow.set('nextChargeBattery',battery==='电池 A'?'电池 B':'电池 A','file');const p={time:new Date().toISOString(),created:Date.now(),soc_before:flow.get('swapSocBefore','file'),mileage:Number(msg.payload)||null,battery:battery},file=dir+'/pending_swap.json',tmp=file+'.tmp';fs.writeFileSync(tmp,JSON.stringify(p,null,2),{mode:0o600});fs.renameSync(tmp,file);flow.set('curMile',p.mileage,'file');node.status({text:'挂起: '+battery+' 前'+p.soc_before+'% 里程'+p.mileage,fill:'blue'});msg.payload=p;return msg;",
     "outputs": 1,
     "timeout": 0,
     "noerr": 0,
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 710,
-    "y": 180,
+    "x": 1140,
+    "y": 400,
     "wires": [
       [
         "el-dbg-pending"
@@ -248,16 +250,17 @@
     "id": "el-fn-session",
     "type": "function",
     "z": "el-tab",
+    "g": "c0158c2515008b07",
     "name": "充电会话管理",
-    "func": "const fs = global.get('fs');\nconst WATT_SCALE = 1; // 功率实体单位：W=1；若为 kW 改 1000\nconst watts = Number(msg.payload) * WATT_SCALE;\nif (isNaN(watts)) return null;\nconst dir = '/data/electric-log';\nconst file = dir + '/charging_session.json';\nlet s = null;\ntry { s = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (err) {}\nconst now = Date.now();\nif (watts > 8) {\n  if (!s || !s.active) {\n    s = { started: now, last_ts: now, kwh: 0, energy_start: null, soc_start_fallback: flow.get('curSoc') != null ? Number(flow.get('curSoc')) : null, mileage_fallback: flow.get('curMile') != null ? Number(flow.get('curMile')) : null, active: true };\n    fs.writeFileSync(file, JSON.stringify(s));\n    return [msg, null]; // 输出1：去读累计电量表，记录充电前读数\n  }\n  const dt = (now - s.last_ts) / 3600000;\n  if (dt > 0 && dt < 24) s.kwh += watts / 1000 * dt;\n  s.last_ts = now;\n  delete s.candidateSince;\n  fs.writeFileSync(file, JSON.stringify(s));\n  node.status({ text: '充电中 ' + s.kwh.toFixed(3) + ' kWh', fill: 'green' });\n  return null;\n}\nif (s && s.active) {\n  const dt = (now - s.last_ts) / 3600000;\n  if (dt > 0 && dt < 24) s.kwh += watts / 1000 * dt;\n  s.last_ts = now;\n  if (!s.candidateSince) s.candidateSince = now;\n  fs.writeFileSync(file, JSON.stringify(s));\n  node.status({ text: '低功率，确认结束中…', fill: 'yellow' });\n  return [null, msg]; // 输出2：低功率，进入2分钟确认\n}\nnode.status({ text: '等待充电（' + watts + 'W）', fill: 'grey' });\nreturn null;",
+    "func": "const fs=global.get('fs'),dir='/data/electric-log',file=dir+'/charging_session.json',watts=Number(msg.payload),now=Date.now();if(!Number.isFinite(watts))return null;\nlet s=null;try{s=JSON.parse(fs.readFileSync(file,'utf8'))}catch(e){}\nfunction save(force){if(!s)return;if(!force&&now-Number(s.persisted||0)<30000)return;s.persisted=now;const t=file+'.tmp';fs.writeFileSync(t,JSON.stringify(s),{mode:0o600});fs.renameSync(t,file);}\nif(watts>8){if(!s||!s.active){s={started:now,last_ts:now,kwh:0,energy_start:null,soc_start_fallback:flow.get('curSoc','file')!=null?Number(flow.get('curSoc','file')):null,mileage_fallback:flow.get('curMile','file')!=null?Number(flow.get('curMile','file')):null,active:true};save(true);return[msg,null];}const dt=(now-s.last_ts)/3600000;if(dt>0&&dt<24)s.kwh+=watts/1000*dt;s.last_ts=now;delete s.candidateSince;delete s.ending;save(false);node.status({text:'充电中 '+s.kwh.toFixed(3)+' kWh',fill:'green'});return null;}\nif(s&&s.active){const dt=(now-s.last_ts)/3600000;if(dt>0&&dt<24)s.kwh+=Math.max(0,watts)/1000*dt;s.last_ts=now;if(s.ending){save(false);return null;}if(!s.candidateSince){s.candidateSince=now;save(true);node.status({text:'低功率，正在确认结束',fill:'yellow'});return[null,msg];}save(false);}return null;",
     "outputs": 2,
     "timeout": 0,
     "noerr": 0,
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 350,
-    "y": 360,
+    "x": 320,
+    "y": 640,
     "wires": [
       [
         "el-get-en-start",
@@ -342,16 +345,17 @@
     "id": "el-fn-confirm-end",
     "type": "function",
     "z": "el-tab",
+    "g": "c0158c2515008b07",
     "name": "确认结束",
-    "func": "const fs = global.get('fs');\nconst WATT_SCALE = 1;\nconst watts = Number(msg.payload) * WATT_SCALE;\nconst dir = '/data/electric-log';\nlet s = null;\ntry { s = JSON.parse(fs.readFileSync(dir + '/charging_session.json', 'utf8')); } catch (e) {}\nif (!s || !s.active) return null;\nif (watts > 8) {\n  s.candidateSince = null;\n  fs.writeFileSync(dir + '/charging_session.json', JSON.stringify(s));\n  node.status({ text: '继续充电', fill: 'green' });\n  return null;\n}\ns.active = false;\nfs.writeFileSync(dir + '/charging_session.json', JSON.stringify(s));\nnode.status({ text: '充电结束，计算度数…', fill: 'yellow' });\nmsg.charge = s;\nreturn msg;",
+    "func": "const fs=global.get('fs'),file='/data/electric-log/charging_session.json',watts=Number(msg.payload);let s=null;try{s=JSON.parse(fs.readFileSync(file,'utf8'));}catch(e){}if(!s||!s.active)return null;function save(){const t=file+'.tmp';fs.writeFileSync(t,JSON.stringify(s),{mode:0o600});fs.renameSync(t,file);}if(Number.isFinite(watts)&&watts>8){delete s.candidateSince;delete s.ending;save();node.status({text:'继续充电',fill:'green'});return null;}s.ending=true;s.end_requested=Date.now();save();node.status({text:'正在读取结束电量',fill:'yellow'});msg.charge=s;return msg;",
     "outputs": 1,
     "timeout": 0,
     "noerr": 0,
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 880,
-    "y": 360,
+    "x": 1020,
+    "y": 680,
     "wires": [
       [
         "el-get-en-end"
@@ -362,16 +366,17 @@
     "id": "el-fn-finalize",
     "type": "function",
     "z": "el-tab",
+    "g": "c0158c2515008b07",
     "name": "生成充电记录",
-    "func": "const fs = global.get('fs');\nconst dir = '/data/electric-log';\nconst PRICE = 0.65;\nconst LOW_KWH = 0.5;\nconst ENERGY_SCALE = 1; // kWh=1；Wh=0.001\nlet s = null;\ntry { s = JSON.parse(fs.readFileSync(dir + '/charging_session.json', 'utf8')); } catch (e) {}\nlet kwh = null;\nif (s && s.energy_start != null) {\n  const endVal = Number(msg.payload) * ENERGY_SCALE;\n  if (!isNaN(endVal) && endVal >= s.energy_start) kwh = endVal - s.energy_start;\n}\nif (kwh == null && msg.charge && msg.charge.kwh != null) kwh = msg.charge.kwh; // 回退：功率积分\nif (kwh == null) kwh = 0;\nkwh = Math.round(kwh * 1000) / 1000;\nif (kwh < LOW_KWH) {\n  try { fs.unlinkSync(dir + '/charging_session.json'); } catch (e) {}\n  node.status({ text: '忽略: ' + kwh + ' kWh < 0.5，疑似插座他用', fill: 'yellow' });\n  return [null, { payload: { type: 'ignore', kwh: kwh } }];\n}\nlet pending = null;\ntry { pending = JSON.parse(fs.readFileSync(dir + '/pending_swap.json', 'utf8')); } catch (e) {}\nconst sess = msg.charge || null;\nconst fallbackSocStart = sess && sess.soc_start_fallback != null ? Number(sess.soc_start_fallback) : null;\nconst now = new Date();\nconst pad = n => String(n).padStart(2, '0');\nconst rec = {\n  id: 'nr-' + Date.now(),\n  date: now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()),\n  time: pad(now.getHours()) + ':' + pad(now.getMinutes()),\n  mileage: pending && pending.mileage != null ? pending.mileage : (sess && sess.mileage_fallback != null ? sess.mileage_fallback : null),\n  socStart: pending ? pending.soc_before : fallbackSocStart,\n  socEnd: 100,\n  energyKwh: kwh,\n  cost: Math.round(kwh * PRICE * 100) / 100,\n  price: PRICE,\n  full: true,\n  type: '家充',\n  battery: '未知',\n  note: (pending || fallbackSocStart != null) ? '' : '未检测到换电',\n  source: 'node-red'\n};\ntry { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}\nfs.appendFileSync(dir + '/records.jsonl', JSON.stringify(rec) + String.fromCharCode(10));\ntry { fs.unlinkSync(dir + '/pending_swap.json'); } catch (e) {}\ntry { fs.unlinkSync(dir + '/charging_session.json'); } catch (e) {}\nnode.status({ text: '已记录 ' + rec.energyKwh + ' kWh @ ' + rec.date, fill: 'green' });\nmsg.payload = rec;\nreturn msg;",
+    "func": "const fs=global.get('fs'),dir='/data/electric-log',PRICE=0.65586875,LOW_KWH=0.5,ENERGY_SCALE=1,nl=String.fromCharCode(10);let s=null;try{s=JSON.parse(fs.readFileSync(dir+'/charging_session.json','utf8'));}catch(e){}const sess=msg.charge||s||{},sessionId=Number(sess.started||(s&&s.started)||Date.now()),recordId='nr-'+sessionId;let kwh=null;if(s&&s.energy_start!=null){const endVal=Number(msg.payload)*ENERGY_SCALE;if(!isNaN(endVal)&&endVal>=s.energy_start)kwh=endVal-s.energy_start;}if(kwh==null&&sess.kwh!=null)kwh=sess.kwh;if(kwh==null)kwh=0;kwh=Math.round(kwh*1000)/1000;if(kwh<LOW_KWH){try{fs.unlinkSync(dir+'/charging_session.json');}catch(e){}node.status({text:'忽略: '+kwh+' kWh < 0.5，疑似插座他用',fill:'yellow'});return[null,{payload:{type:'ignore',kwh:kwh}}];}let pending=null;try{pending=JSON.parse(fs.readFileSync(dir+'/pending_swap.json','utf8'));}catch(e){}if(pending){const pts=Number(pending.created||pending.timestamp||pending.ts||Date.parse(pending.time||''));if(!pts||Date.now()-pts>48*3600000)pending=null;}const fallbackSocStart=sess.soc_start_fallback!=null?Number(sess.soc_start_fallback):null,now=new Date(),pad=n=>String(n).padStart(2,'0'),rec={id:recordId,date:now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate()),time:pad(now.getHours())+':'+pad(now.getMinutes()),mileage:pending&&pending.mileage!=null?pending.mileage:(sess.mileage_fallback!=null?sess.mileage_fallback:null),socStart:pending?pending.soc_before:fallbackSocStart,socEnd:flow.get('curSoc','file')!=null?Number(flow.get('curSoc','file')):null,energyKwh:kwh,cost:Math.round(kwh*PRICE*100)/100,price:PRICE,full:flow.get('curSoc','file')!=null?Number(flow.get('curSoc','file'))>=95:false,type:'家充',battery:pending&&pending.battery?pending.battery:'未知',note:(pending||fallbackSocStart!=null)?'':'未检测到换电',source:'node-red'};try{fs.mkdirSync(dir,{recursive:true});}catch(e){}const recordsFile=dir+'/records.jsonl';let lines=[];try{lines=fs.readFileSync(recordsFile,'utf8').split(nl).filter(Boolean);}catch(e){}const exists=lines.some(line=>{try{return JSON.parse(line).id===recordId;}catch(e){return false;}});if(exists){try{fs.unlinkSync(dir+'/pending_swap.json');}catch(e){}try{fs.unlinkSync(dir+'/charging_session.json');}catch(e){}node.status({text:'记录已存在，已跳过重复写入',fill:'yellow'});return null;}lines.push(JSON.stringify(rec));const tmp=recordsFile+'.tmp';fs.writeFileSync(tmp,lines.join(nl)+nl,{mode:0o600});fs.renameSync(tmp,recordsFile);try{fs.unlinkSync(dir+'/pending_swap.json');}catch(e){}try{fs.unlinkSync(dir+'/charging_session.json');}catch(e){}node.status({text:'已记录 '+rec.battery+' '+rec.energyKwh+' kWh，日期 '+rec.date,fill:'green'});msg.payload=rec;return msg;",
     "outputs": 2,
     "timeout": 0,
     "noerr": 0,
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 1220,
-    "y": 360,
+    "x": 1020,
+    "y": 780,
     "wires": [
       [
         "el-dbg-final"
@@ -427,16 +432,17 @@
     "id": "el-fn-read-rec",
     "type": "function",
     "z": "el-tab",
+    "g": "c0158c2515008b07",
     "name": "读取全部记录",
-    "func": "const TOKEN = '改成你的令牌';\nif (!msg.req || !msg.req.query || msg.req.query.token !== TOKEN) {\n  msg.statusCode = 403;\n  msg.payload = { error: 'forbidden' };\n  msg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };\n  return msg;\n}\nconst fs = global.get('fs');\nconst file = '/data/electric-log/records.jsonl';\nlet arr = [];\ntry {\n  const lines = fs.readFileSync(file, 'utf8').split('\\n').filter(Boolean);\n  arr = lines.map(function (l) { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean);\n} catch (e) {}\nmsg.payload = arr;\nmsg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };\nreturn msg;",
+    "func": "const secretFs = global.get('fs');\nlet TOKEN = '';\ntry { TOKEN = JSON.parse(secretFs.readFileSync('/data/secure/node_red_secrets.json','utf8')).chargingApiToken || ''; } catch (e) {}\nconst auth = String((msg.req && msg.req.headers && msg.req.headers.authorization) || '');\nconst supplied = auth.startsWith('Bearer ') ? auth.slice(7) : String((msg.req && msg.req.query && msg.req.query.token) || '');\nconst crypto = global.get('crypto');\nconst valid = TOKEN && supplied && crypto && Buffer.byteLength(TOKEN) === Buffer.byteLength(supplied) && crypto.timingSafeEqual(Buffer.from(TOKEN), Buffer.from(supplied));\nif (!valid) { msg.statusCode=403; msg.payload={error:'forbidden'}; msg.headers = { 'Access-Control-Allow-Origin': '*','Content-Type':'application/json','Cache-Control':'no-store'}; return msg; }\nconst fs = global.get('fs');\nconst file = '/data/electric-log/records.jsonl';\nlet arr = [];\ntry {\n  const lines = fs.readFileSync(file, 'utf8').split('\\n').filter(Boolean);\n  arr = lines.map(function (l) { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean);\n} catch (e) {}\nmsg.payload = arr;\nmsg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };\nreturn msg;",
     "outputs": 1,
     "timeout": 0,
     "noerr": 0,
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 400,
-    "y": 540,
+    "x": 340,
+    "y": 760,
     "wires": [
       [
         "el-http-resp-rec"
@@ -475,16 +481,17 @@
     "id": "el-fn-status",
     "type": "function",
     "z": "el-tab",
+    "g": "c0158c2515008b07",
     "name": "读取状态",
-    "func": "const TOKEN = '改成你的令牌';\nif (!msg.req || !msg.req.query || msg.req.query.token !== TOKEN) {\n  msg.statusCode = 403;\n  msg.payload = { error: 'forbidden' };\n  msg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };\n  return msg;\n}\nconst fs = global.get('fs');\nconst dir = '/data/electric-log';\nconst out = { pending: null, session: null, last: null, count: 0 };\ntry { out.pending = JSON.parse(fs.readFileSync(dir + '/pending_swap.json', 'utf8')); } catch (e) {}\ntry { out.session = JSON.parse(fs.readFileSync(dir + '/charging_session.json', 'utf8')); } catch (e) {}\ntry {\n  const lines = fs.readFileSync(dir + '/records.jsonl', 'utf8').split('\\n').filter(Boolean);\n  out.count = lines.length;\n  if (lines.length) {\n    try { out.last = JSON.parse(lines[lines.length - 1]); } catch (e) {}\n  }\n} catch (e) {}\nconst tmpSoc = flow.get('curSoc');\nout.soc = tmpSoc != null && tmpSoc !== '' ? Number(tmpSoc) : null;\nout.mileage = flow.get('curMile') != null && flow.get('curMile') !== '' ? Number(flow.get('curMile')) : null;\n/* 续航估算：容量×SOC÷平均墙端电耗（由集成侧统一计算） */\nlet range = null;\nif (out.soc != null) {\n  try {\n    const fsx = global.get('fs');\n    const lines = fsx.readFileSync('/data/electric-log/records.jsonl', 'utf8').split('\\n').filter(Boolean);\n    let totalKwh = 0;\n    const mileSet = [];\n    lines.forEach(function (l) {\n      try {\n        const r = JSON.parse(l);\n        if (r.energyKwh != null) totalKwh += Number(r.energyKwh);\n        if (r.mileage != null) mileSet.push(Number(r.mileage));\n      } catch (e) {}\n    });\n    let totalKm = 0;\n    if (mileSet.length >= 2) totalKm = Math.max.apply(null, mileSet) - Math.min.apply(null, mileSet);\n    const wallWhKm = totalKm > 0 && totalKwh > 0 ? totalKwh * 1000 / totalKm : null;\n    if (wallWhKm) range = Math.round(1863 * out.soc / 100 / wallWhKm);\n  } catch (e) {}\n}\nout.range = range;\nmsg.payload = out;\nmsg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };\nreturn msg;",
+    "func": "const secretFs = global.get('fs');\nlet TOKEN = '';\ntry { TOKEN = JSON.parse(secretFs.readFileSync('/data/secure/node_red_secrets.json','utf8')).chargingApiToken || ''; } catch (e) {}\nconst auth = String((msg.req && msg.req.headers && msg.req.headers.authorization) || '');\nconst supplied = auth.startsWith('Bearer ') ? auth.slice(7) : String((msg.req && msg.req.query && msg.req.query.token) || '');\nconst crypto = global.get('crypto');\nconst valid = TOKEN && supplied && crypto && Buffer.byteLength(TOKEN) === Buffer.byteLength(supplied) && crypto.timingSafeEqual(Buffer.from(TOKEN), Buffer.from(supplied));\nif (!valid) { msg.statusCode=403; msg.payload={error:'forbidden'}; msg.headers = { 'Access-Control-Allow-Origin': '*','Content-Type':'application/json','Cache-Control':'no-store'}; return msg; }\nconst fs = global.get('fs');\nconst dir = '/data/electric-log';\nconst out = { pending: null, session: null, last: null, count: 0 };\ntry { out.pending = JSON.parse(fs.readFileSync(dir + '/pending_swap.json', 'utf8')); } catch (e) {}\ntry { out.session = JSON.parse(fs.readFileSync(dir + '/charging_session.json', 'utf8')); } catch (e) {}\ntry {\n  const lines = fs.readFileSync(dir + '/records.jsonl', 'utf8').split('\\n').filter(Boolean);\n  out.count = lines.length;\n  if (lines.length) {\n    try { out.last = JSON.parse(lines[lines.length - 1]); } catch (e) {}\n  }\n} catch (e) {}\nconst tmpSoc = flow.get('curSoc', 'file');\nout.soc = tmpSoc != null && tmpSoc !== '' ? Number(tmpSoc) : null;\nout.mileage = flow.get('curMile', 'file') != null && flow.get('curMile', 'file') !== '' ? Number(flow.get('curMile', 'file')) : null;\n/* 续航估算：容量×SOC÷平均墙端电耗（由集成侧统一计算） */\nlet range = null;\nif (out.soc != null) {\n  try {\n    const fsx = global.get('fs');\n    const lines = fsx.readFileSync('/data/electric-log/records.jsonl', 'utf8').split('\\n').filter(Boolean);\n    let totalKwh = 0;\n    const mileSet = [];\n    lines.forEach(function (l) {\n      try {\n        const r = JSON.parse(l);\n        if (r.energyKwh != null) totalKwh += Number(r.energyKwh);\n        if (r.mileage != null) mileSet.push(Number(r.mileage));\n      } catch (e) {}\n    });\n    let totalKm = 0;\n    if (mileSet.length >= 2) totalKm = Math.max.apply(null, mileSet) - Math.min.apply(null, mileSet);\n    const wallWhKm = totalKm > 0 && totalKwh > 0 ? totalKwh * 1000 / totalKm : null;\n    if (wallWhKm) range = Math.round(1863 * out.soc / 100 / wallWhKm);\n  } catch (e) {}\n}\nout.range = range;\nmsg.payload = out;\nmsg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };\nreturn msg;",
     "outputs": 1,
     "timeout": 0,
     "noerr": 0,
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 400,
-    "y": 620,
+    "x": 320,
+    "y": 820,
     "wires": [
       [
         "el-http-resp-status"
@@ -631,16 +638,17 @@
     "id": "el-fn-backup",
     "type": "function",
     "z": "el-tab",
+    "g": "c0158c2515008b07",
     "name": "保存备份到NAS",
-    "func": "const TOKEN = '改成你的令牌';\nif (!msg.req || !msg.req.query || msg.req.query.token !== TOKEN) {\n  msg.statusCode = 403;\n  msg.payload = { error: 'forbidden' };\n  msg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };\n  return msg;\n}\nconst fsx = global.get('fs');\nconst dir = '/data/electric-log';\ntry { fsx.mkdirSync(dir, { recursive: true }); } catch (e) {}\nconst body = typeof msg.payload === 'string' ? msg.payload : JSON.stringify(msg.payload);\nconst nowD = new Date();\nconst localD = new Date(nowD.getTime() - nowD.getTimezoneOffset() * 60000);\nconst date = localD.toISOString().slice(0, 10);\nconst file = 'app_backup_' + date + '.json';\nfsx.writeFileSync(dir + '/' + file, body);\nmsg.payload = { ok: true, file: file };\nmsg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };\nreturn msg;",
+    "func": "const secretFs = global.get('fs');\nlet TOKEN = '';\ntry { TOKEN = JSON.parse(secretFs.readFileSync('/data/secure/node_red_secrets.json','utf8')).chargingApiToken || ''; } catch (e) {}\nconst auth = String((msg.req && msg.req.headers && msg.req.headers.authorization) || '');\nconst supplied = auth.startsWith('Bearer ') ? auth.slice(7) : String((msg.req && msg.req.query && msg.req.query.token) || '');\nconst crypto = global.get('crypto');\nconst valid = TOKEN && supplied && crypto && Buffer.byteLength(TOKEN) === Buffer.byteLength(supplied) && crypto.timingSafeEqual(Buffer.from(TOKEN), Buffer.from(supplied));\nif (!valid) { msg.statusCode=403; msg.payload={error:'forbidden'}; msg.headers = { 'Access-Control-Allow-Origin': '*','Content-Type':'application/json','Cache-Control':'no-store'}; return msg; }\nconst fsx = global.get('fs');\nconst dir = '/data/electric-log';\ntry { fsx.mkdirSync(dir, { recursive: true }); } catch (e) {}\nconst body = typeof msg.payload === 'string' ? msg.payload : JSON.stringify(msg.payload);\nif (Buffer.byteLength(body, 'utf8') > 5 * 1024 * 1024) { msg.statusCode = 413; msg.payload = { error: 'payload too large' }; msg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }; return msg; }\nconst nowD = new Date();\nconst localD = new Date(nowD.getTime() - nowD.getTimezoneOffset() * 60000);\nconst date = localD.toISOString().slice(0, 10);\nconst file = 'app_backup_' + date + '.json';\nconst tmp = dir + '/.' + file + '.tmp';\nfsx.writeFileSync(tmp, body, { mode: 0o600 });\nfsx.renameSync(tmp, dir + '/' + file);\nmsg.payload = { ok: true, file: file };\nmsg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };\nreturn msg;",
     "outputs": 1,
     "timeout": 0,
     "noerr": 0,
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 400,
-    "y": 700,
+    "x": 340,
+    "y": 880,
     "wires": [
       [
         "el-http-resp-backup"
@@ -954,5 +962,107 @@
         "el-fn-mile-cache"
       ]
     ]
+  },
+  {
+    "id": "el-http-backups",
+    "type": "http in",
+    "z": "el-tab",
+    "g": "c0158c2515008b07",
+    "name": "GET /api/backups",
+    "url": "/api/backups",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 130,
+    "y": 1000,
+    "wires": [
+      [
+        "el-fn-list-backups"
+      ]
+    ]
+  },
+  {
+    "id": "el-fn-list-backups",
+    "type": "function",
+    "z": "el-tab",
+    "g": "c0158c2515008b07",
+    "name": "列出NAS备份",
+    "func": "const secretFs=global.get('fs');let TOKEN='';try{TOKEN=JSON.parse(secretFs.readFileSync('/data/secure/node_red_secrets.json','utf8')).chargingApiToken||'';}catch(e){}const auth=String((msg.req&&msg.req.headers&&msg.req.headers.authorization)||''),supplied=auth.startsWith('Bearer ')?auth.slice(7):String((msg.req&&msg.req.query&&msg.req.query.token)||''),crypto=global.get('crypto'),valid=TOKEN&&supplied&&crypto&&Buffer.byteLength(TOKEN)===Buffer.byteLength(supplied)&&crypto.timingSafeEqual(Buffer.from(TOKEN),Buffer.from(supplied)),headers={'Access-Control-Allow-Origin':'*','Content-Type':'application/json','Cache-Control':'no-store'};if(!valid){msg.statusCode=403;msg.payload={error:'forbidden'};msg.headers=headers;return msg;}const fsx=global.get('fs'),dir='/data/electric-log';let backups=[];try{backups=fsx.readdirSync(dir).filter(f=>/^app_backup_\\d{4}-\\d{2}-\\d{2}\\.json$/.test(f)).map(f=>{const st=fsx.statSync(dir+'/'+f);return{file:f,date:f.slice(11,21),size:st.size,mtime:st.mtime.toISOString()};}).sort((a,b)=>b.file.localeCompare(a.file));}catch(e){}msg.payload={backups:backups};msg.headers=headers;return msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 340,
+    "y": 1000,
+    "wires": [
+      [
+        "el-http-resp-backups"
+      ]
+    ]
+  },
+  {
+    "id": "el-http-resp-backups",
+    "type": "http response",
+    "z": "el-tab",
+    "g": "c0158c2515008b07",
+    "name": "返回备份列表",
+    "statusCode": "",
+    "headers": {},
+    "x": 570,
+    "y": 1000,
+    "wires": []
+  },
+  {
+    "id": "el-http-backup-get",
+    "type": "http in",
+    "z": "el-tab",
+    "g": "c0158c2515008b07",
+    "name": "GET /api/backup",
+    "url": "/api/backup",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 130,
+    "y": 1060,
+    "wires": [
+      [
+        "el-fn-get-backup"
+      ]
+    ]
+  },
+  {
+    "id": "el-fn-get-backup",
+    "type": "function",
+    "z": "el-tab",
+    "g": "c0158c2515008b07",
+    "name": "读取NAS备份",
+    "func": "const secretFs=global.get('fs');let TOKEN='';try{TOKEN=JSON.parse(secretFs.readFileSync('/data/secure/node_red_secrets.json','utf8')).chargingApiToken||'';}catch(e){}const auth=String((msg.req&&msg.req.headers&&msg.req.headers.authorization)||''),supplied=auth.startsWith('Bearer ')?auth.slice(7):String((msg.req&&msg.req.query&&msg.req.query.token)||''),crypto=global.get('crypto'),valid=TOKEN&&supplied&&crypto&&Buffer.byteLength(TOKEN)===Buffer.byteLength(supplied)&&crypto.timingSafeEqual(Buffer.from(TOKEN),Buffer.from(supplied)),headers={'Access-Control-Allow-Origin':'*','Content-Type':'application/json','Cache-Control':'no-store'};if(!valid){msg.statusCode=403;msg.payload={error:'forbidden'};msg.headers=headers;return msg;}const fsx=global.get('fs'),dir='/data/electric-log',file=String((msg.req&&msg.req.query&&msg.req.query.file)||'');if(!/^app_backup_\\d{4}-\\d{2}-\\d{2}\\.json$/.test(file)){msg.statusCode=400;msg.payload={error:'invalid file'};msg.headers=headers;return msg;}try{const raw=fsx.readFileSync(dir+'/'+file,'utf8');if(Buffer.byteLength(raw,'utf8')>5*1024*1024)throw new Error('too large');msg.payload=JSON.parse(raw);msg.headers=headers;return msg;}catch(e){msg.statusCode=404;msg.payload={error:'backup not found'};msg.headers=headers;return msg;}",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 340,
+    "y": 1060,
+    "wires": [
+      [
+        "el-http-resp-backup-get"
+      ]
+    ]
+  },
+  {
+    "id": "el-http-resp-backup-get",
+    "type": "http response",
+    "z": "el-tab",
+    "g": "c0158c2515008b07",
+    "name": "返回备份内容",
+    "statusCode": "",
+    "headers": {},
+    "x": 570,
+    "y": 1060,
+    "wires": []
   }
 ]

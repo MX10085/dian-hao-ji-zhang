@@ -40,7 +40,8 @@
 ### 设置页
 
 - **车辆管理**：支持多辆车，可添加、切换、重命名、删除；每辆车的记录、统计、设置完全独立，顶部显示当前车辆。
-- **Node-RED 自动记录同步**：配合 Home Assistant + Node-RED 自动记录插座充电（换电跳变检测、电量表差值算度数、充后电量自动回填、HA 通知），app 内可填接口地址，**打开应用自动同步**，也可一键同步/检查连接。
+- **Node-RED 自动记录同步**：按车辆保存接口与令牌，打开应用自动同步；服务器同 ID 记录发生回填时会更新本地自动记录，手动修改过的记录会保留。
+- **双电池记录**：Node-RED 从首次观察到的换电开始按“电池 A / 电池 B”交替标记，记录卡显示本次行驶公里数和电池名称，健康估算可分别查看两块电池。
 - 当前车辆的名称、**爱车相伴日期**、电池容量、充电效率、默认电价、电耗单位、**月度充电预算**。
 - **浅色模式**：跟随系统自动切换（浅色/深色）。
 - **导入数据**：支持本应用 JSON 备份、小熊油耗官方 CSV 导出（油耗记录 12 字段 / 费用记录 5 字段）、通用 CSV（表头自动识别）。
@@ -60,9 +61,11 @@
 
 1. **导入流程**：Node-RED 菜单 → 导入 → 选择 `node-red/electric-log-flow.json` → 部署；
 2. **修改实体**：把 4 个实体 ID 换成你自己的（见下表）；`server-state-changed` 和 `api-current-state` 节点若提示，重新选择你的 HA 服务器；
-3. **暴露 fs**（Node-RED v4 必须）：在 `settings.js` 的 `functionGlobalContext` 里加一行 `fs: require('fs'),`，重启容器，否则接口会挂起；
-4. **反代（可选）**：Nginx Proxy Manager 加两个 Custom Location：`/api/records`、`/api/status` → 指向 Node-RED 地址；
-5. **app 同步**：设置页「Node-RED 自动记录同步」填接口地址（如 `http://nas:1880/api/records` 或反代后的 https 地址；接口带令牌时在地址后加 `?token=你的令牌`）→ 检查连接 → 同步记录。
+3. **暴露依赖**：在 `settings.js` 的 `functionGlobalContext` 中配置 `fs: require('fs')` 和 `crypto: require('crypto')`。
+4. **保存令牌**：创建 `/data/secure/node_red_secrets.json`，内容为 `{"chargingApiToken":"换成随机长令牌"}`，权限建议设为 600。
+5. **配置 CORS**：在 `settings.js` 中配置 `httpNodeCors`，允许应用来源以及 `Authorization,Content-Type` 请求头和 `GET,POST,OPTIONS` 方法。
+6. **配置反代**：Nginx Proxy Manager 将 `/api/` 转发到 Node-RED。外部页面使用 HTTPS 时接口也必须是 HTTPS。
+7. **app 同步**：设置页分别填写接口地址（如 `https://你的域名/api/records`）和访问令牌，再点击“检查连接”。
 
 ### 实体配置（通用）
 
@@ -79,8 +82,9 @@
 2. 插座功率 >8W 开始充电会话（记录累计电量起始值），<8W 持续 2 分钟确认结束；
 3. 结束读数 − 开始读数 = 本次充电度数（读数异常时回退到功率积分）；
 4. 充电电量 <0.5 kWh 视为插座用于其他设备，忽略并保留挂起数据；
-5. 正常结束生成一条记录追加到 `records.jsonl`，同时删除挂起数据；装回电池时用实际电量回填上条记录的充后电量。
-6. 换电、开始充电、充电完成/疑似他用都会发送 HA 通知（默认 `notify.persistent_notification`，可改成手机通知服务）。
+5. 正常结束以充电会话开始时间生成稳定记录 ID，采用临时文件加原子替换写入，并检查 ID 防止重启造成重复记录。
+6. 第一次观察到的换下电池标为“电池 A”，后续换电按 A/B 交替；装回电池时用实际充后电量原子回填上条记录。
+7. 换电、开始充电、充电完成/疑似他用都会发送 HA 通知（默认 `notify.persistent_notification`，可改成手机通知服务）。
 
 ### 文件与接口
 
@@ -88,7 +92,7 @@
   - `pending_swap.json`：挂起换电数据（防 Node-RED 重启丢失）
   - `charging_session.json`：进行中的充电会话
   - `records.jsonl`：最终记录（一行一条 JSON）
-- HTTP 接口（Node-RED 内置）：`GET /api/records`、`GET /api/status`（含当前电量与里程）、`POST /api/backup`（app 备份推送到 NAS，保存为 `app_backup_日期.json`）
+- HTTP 接口（Node-RED 内置）：`GET /api/records`、`GET /api/status`、`POST /api/backup`、`GET /api/backups`、`GET /api/backup?file=...`。app 可列出并恢复 NAS 备份。
 
 ### 可调参数
 
@@ -150,7 +154,7 @@ CSV 12 字段格式（与官方文档一致）：
 
 ## 数据备份
 
-数据存在浏览器 localStorage 里。应用每天会自动保存一份本地快照（保留最近 15 份，可在设置页查看和恢复）；设置了 Node-RED 地址后，每日备份还会同步推送一份到 NAS（保存为 `app_backup_日期.json`），本地快照始终保留、推送失败不影响。但浏览器缓存被清仍可能丢失本地数据，电脑端建议定期点「导出备份」把 JSON 存到别处。换手机/浏览器时点「导入」选择备份文件即可恢复（v1 单车辆旧备份也兼容）。
+数据存在浏览器 localStorage 里。应用每天会自动保存一份本地快照（保留最近 15 份，可在设置页查看和恢复）；设置了 Node-RED 地址后，每日备份还会同步推送一份到 NAS（保存为 `app_backup_日期.json`），并可在设置页直接列出和恢复；本地快照始终保留、推送失败不影响。但浏览器缓存被清仍可能丢失本地数据，电脑端建议定期点「导出备份」把 JSON 存到别处。换手机/浏览器时点「导入」选择备份文件即可恢复（v1 单车辆旧备份也兼容）。
 
 ## 测试
 

@@ -147,7 +147,7 @@ test('汇总：加权平均与月度统计', () => {
     { id: 'r2', date: '2026-07-15', time: '20:00', mileage: 130, socStart: 50, socEnd: 100, energyKwh: 1.0, cost: 0.6, price: 0.6 },
     { id: 'r3', date: '2026-08-01', time: '08:00', mileage: 170, socStart: 20, socEnd: 100, energyKwh: 1.2, cost: 0.72, price: 0.6 }
   ];
-  const s = Calc.summary(records, { batteryCapacityWh: 1863, chargerEfficiency: 0.88 });
+  const s = Calc.summary(records, { batteryCapacityWh: 1863, chargerEfficiency: 0.88 }, new Date('2026-08-15T12:00:00'));
   assert.equal(s.totalDistance, 70);
   assert.equal(s.recordCount, 3);
   /* 累计充电/总费用包含第一条记录（不依赖路段配对） */
